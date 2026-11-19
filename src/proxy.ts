@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { SESSION_COOKIE, verifySession } from './server/auth/session';
+import { GATE_COOKIE, gateOn, gatePage, gateToken } from './lib/site-gate';
 
 const LOCALES = ['en', 'pl', 'de', 'fr', 'es'];
 
@@ -22,6 +23,18 @@ function redirectTo(req: NextRequest, path: string, search: string, status: 307 
  */
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+
+  // 0. the site lock: every page asks for the password once (lib/site-gate.ts)
+  if (gateOn() && req.cookies.get(GATE_COOKIE)?.value !== (await gateToken())) {
+    const params = new URLSearchParams(search);
+    const wrong = params.get('accesso') === 'errato';
+    params.delete('accesso');
+    const rest = params.toString();
+    return new NextResponse(gatePage(`${pathname}${rest ? `?${rest}` : ''}`, wrong), {
+      status: 401,
+      headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow' },
+    });
+  }
 
   if (pathname.startsWith('/admin')) {
     if (pathname === '/admin/login') return NextResponse.next();
