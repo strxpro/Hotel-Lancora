@@ -1,5 +1,6 @@
 import 'server-only';
 import { splitTelegramText } from './media';
+import { cleanMarkdown } from '@/lib/plain-text';
 
 /** Minimal Telegram Bot API client. The token never leaves the server. */
 export function telegramConfigured(): boolean {
@@ -31,13 +32,13 @@ export type ReplyKeyboard = { keyboard: { text: string }[][]; resize_keyboard?: 
 export type SendOpts = { replyTo?: number; keyboard?: ReplyKeyboard };
 
 /**
- * Plain assistant output, split without breaking emoji or HTML entities, made easier to read: the
- * first line becomes a bold title when a longer answer follows, **words** become bold.
+ * Plain assistant output, split without breaking emoji or HTML entities, made easier to read: no
+ * markdown (raw asterisks or hashes), and the first line becomes a bold title when more follows.
  */
 export async function sendText(chatId: string, text: string, buttons?: InlineButton[][], opts: SendOpts = {}): Promise<void> {
-  const chunks = splitTelegramText(text);
+  const chunks = splitTelegramText(cleanMarkdown(text));
   for (const [index, chunk] of chunks.entries()) {
-    let html = escapeHtml(chunk).replace(/\*\*([^*\n]{1,120})\*\*/g, '<b>$1</b>');
+    let html = escapeHtml(chunk);
     if (index === 0) {
       const nl = html.indexOf('\n');
       if (nl > 0 && nl <= 90 && !html.slice(0, nl).includes('<b>')) html = `<b>${html.slice(0, nl)}</b>${html.slice(nl)}`;

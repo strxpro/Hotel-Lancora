@@ -21,6 +21,7 @@ import { priceIntent } from './price-intent';
 import type { UiStep } from '@/lib/assist';
 import { generateImage, lookAt, lookAtMany, readSavedImage, saveImage, visionConfigured } from '../ai/images';
 import { detectLang, LANG_NAME, localize, localizeSteps, playbookFor, replayFor } from './extras';
+import { cleanMarkdown } from '@/lib/plain-text';
 import { autoInstantSummary, hotelIntent, hotelToolsHelp, markupSummary, paymentsStatus, pricesOverview, setAutoInstant, setMarkup, setTax, taxSummary, todaySummary, type MarkupArgs, type TaxArgs } from './hotel-tools';
 
 /**
@@ -88,11 +89,12 @@ const TOOLS: Record<string, ToolDef> = {
     run: (a: { from: string; to: string; label: string }) => {
       const s = rangeStats(readDb(), a.from, a.to);
       return [
-        `Periodo${a.label ? `: ${a.label}` : ''} (${fmtDate(a.from)} – ${fmtDate(addDays(a.to, -1))}).`,
-        `• Incassato (pagamenti ricevuti): ${money(s.received, 'it', 2)}`,
-        `• Ricavi da soggiorni maturati: ${money(s.revenue, 'it', 2)}`,
-        `• Notti vendute: ${s.roomNights} · occupazione ${s.occupancy}% · prezzo medio ${money(s.adr, 'it', 2)}/notte`,
-        `• Prenotazioni ricevute: ${s.bookings} (dirette ${s.directShare}%)`,
+        `💶 Incassi${a.label ? ` ${a.label}` : ''} (${fmtDate(a.from)} – ${fmtDate(addDays(a.to, -1))})`,
+        `💰 Incassato: ${money(s.received, 'it', 2)}`,
+        `📈 Ricavi dei soggiorni: ${money(s.revenue, 'it', 2)}`,
+        `🛏 Notti vendute: ${s.roomNights} · occupazione ${s.occupancy}%`,
+        `🏷 Prezzo medio: ${money(s.adr, 'it', 2)} a notte`,
+        `📬 Prenotazioni ricevute: ${s.bookings} (dirette ${s.directShare}%)`,
         readDb().settings.demoMode ? '(calcolato sui dati dimostrativi)' : '',
       ]
         .filter(Boolean)
@@ -106,8 +108,8 @@ const TOOLS: Record<string, ToolDef> = {
     schema: z.object({ date: iso }),
     run: (a: { date: string }) => {
       const free = freeRoomsOn(readDb(), a.date);
-      if (!free.length) return `Nessuna camera libera la notte di ${fmtDateLong(a.date)}.`;
-      return `Libere la notte di ${fmtDateLong(a.date)}: ${free.length}\n${free.map((r) => `• ${r.number} ${r.name} (max ${r.maxGuests}, ${money(r.basePrice)})`).join('\n')}`;
+      if (!free.length) return `🛏 Nessuna camera libera la notte di ${fmtDateLong(a.date)}.`;
+      return `🛏 Libere la notte di ${fmtDateLong(a.date)}: ${free.length}\n${free.map((r) => `• ${r.number} ${r.name} · max ${r.maxGuests} · ${money(r.basePrice)}`).join('\n')}`;
     },
   },
   arrivals: {
@@ -118,8 +120,8 @@ const TOOLS: Record<string, ToolDef> = {
     run: (a: { date: string }) => {
       const db = readDb();
       const list = arrivalsOn(db, a.date);
-      if (!list.length) return `Nessun arrivo previsto ${a.date === todayISO() ? 'oggi' : `il ${fmtDate(a.date)}`}.`;
-      return `Arrivi ${a.date === todayISO() ? 'di oggi' : `del ${fmtDate(a.date)}`}: ${list.length}\n${list.map((b) => `• ${b.guest.firstName} ${b.guest.lastName} · camera ${db.rooms.find((r) => r.id === b.roomId)?.number ?? 'da assegnare'} · ${ospiti(b.adults + b.children)} · ${sourceLabel(b.source)}`).join('\n')}`;
+      if (!list.length) return `🛎 Nessun arrivo previsto ${a.date === todayISO() ? 'oggi' : `il ${fmtDate(a.date)}`}.`;
+      return `🛎 Arrivi ${a.date === todayISO() ? 'di oggi' : `del ${fmtDate(a.date)}`}: ${list.length}\n${list.map((b) => `• ${b.guest.firstName} ${b.guest.lastName} · camera ${db.rooms.find((r) => r.id === b.roomId)?.number ?? 'da assegnare'} · ${ospiti(b.adults + b.children)} · ${sourceLabel(b.source)}`).join('\n')}`;
     },
   },
   departures: {
@@ -130,8 +132,8 @@ const TOOLS: Record<string, ToolDef> = {
     run: (a: { date: string }) => {
       const db = readDb();
       const list = departuresOn(db, a.date);
-      if (!list.length) return `Nessuna partenza ${a.date === todayISO() ? 'oggi' : `il ${fmtDate(a.date)}`}.`;
-      return `Partenze: ${list.length}\n${list.map((b) => `• ${b.guest.firstName} ${b.guest.lastName} · camera ${db.rooms.find((r) => r.id === b.roomId)?.number ?? '—'}`).join('\n')}`;
+      if (!list.length) return `👋 Nessuna partenza ${a.date === todayISO() ? 'oggi' : `il ${fmtDate(a.date)}`}.`;
+      return `👋 Partenze ${a.date === todayISO() ? 'di oggi' : `del ${fmtDate(a.date)}`}: ${list.length}\n${list.map((b) => `• ${b.guest.firstName} ${b.guest.lastName} · camera ${db.rooms.find((r) => r.id === b.roomId)?.number ?? '—'}`).join('\n')}`;
     },
   },
   list_bookings: {
@@ -142,9 +144,9 @@ const TOOLS: Record<string, ToolDef> = {
     run: (a: { from: string; to: string; label: string }) => {
       const db = readDb();
       const list = db.bookings.filter((b) => isBookingActive(b) && b.checkIn >= a.from && b.checkIn < a.to).sort((x, y) => x.checkIn.localeCompare(y.checkIn));
-      if (!list.length) return `Nessuna prenotazione con arrivo ${a.label}.`;
+      if (!list.length) return `📋 Nessuna prenotazione con arrivo ${a.label}.`;
       const shown = list.slice(0, 15).map((b) => `• ${fmtDate(b.checkIn)}→${fmtDate(b.checkOut)} ${b.guest.lastName} · cam. ${db.rooms.find((r) => r.id === b.roomId)?.number ?? '—'} · ${sourceLabel(b.source)} · ${money(b.total)}`);
-      return `Prenotazioni con arrivo ${a.label}: ${list.length} (totale ${money(round2(list.reduce((s, b) => s + b.total, 0)))})\n${shown.join('\n')}${list.length > 15 ? `\n… e altre ${list.length - 15} nel pannello.` : ''}`;
+      return `📋 Prenotazioni con arrivo ${a.label}: ${list.length}\n💶 Totale ${money(round2(list.reduce((s, b) => s + b.total, 0)))}\n${shown.join('\n')}${list.length > 15 ? `\n… e altre ${list.length - 15} nel pannello.` : ''}`;
     },
   },
   bookings_by_source: {
@@ -159,7 +161,7 @@ const TOOLS: Record<string, ToolDef> = {
         const x = s.sources.find((y) => y.source === a.source);
         return `Prenotazioni da ${sourceLabel(a.source as never)} ${a.label}: ${x?.count ?? 0}${x ? ` (valore ${money(x.revenue)})` : ''}.`;
       }
-      return `Prenotazioni ricevute ${a.label}: ${s.bookings}\n${s.sources.map((x) => `• ${sourceLabel(x.source)}: ${x.count}`).join('\n')}\nDirette: ${s.directShare}%`;
+      return `📊 Prenotazioni ricevute ${a.label}: ${s.bookings}\n${s.sources.map((x) => `• ${sourceLabel(x.source)}: ${x.count}`).join('\n')}\n🎯 Dirette: ${s.directShare}%`;
     },
   },
   set_price: {
@@ -432,22 +434,23 @@ const TOOLS: Record<string, ToolDef> = {
 
 
 const HELP = [
-  'Posso aiutarti con domande e comandi come:',
-  '• “Quanto abbiamo incassato questa settimana?”',
-  '• “Quali camere sono libere domani?”',
-  '• “Chi arriva oggi?” / “Chi parte domani?”',
-  '• “Chiudi la camera 105 dal 12 al 15 novembre”',
-  '• “Cambia il prezzo della camera 101 a 85 euro, 80 in contanti”',
-  '• “Metti il prezzo di tutte le camere a 150 euro ad agosto” / “Riporta la camera 101 al prezzo base a luglio”',
-  '• “LA-7Q24N ha pagato 200 euro in contanti” (o con carta)',
-  '• “Scrivi ai clienti tedeschi che a dicembre siamo aperti”',
-  '• “Manda un’email a Giulia Rossi: la camera è pronta dalle 12”',
-  '• “Mostrami le prenotazioni di dicembre”',
-  '• “Crea una descrizione più elegante per la camera 108”',
-  '• “Spegni il report della sera” / “Manda il report alle 22” / “Riaccendi i messaggi del mattino”',
+  '👋 Ecco cosa posso fare per te. Scrivimi o mandami un vocale, ad esempio:',
+  '',
+  '💶 “Quanto abbiamo incassato questa settimana?”',
+  '🛏 “Quali camere sono libere domani?”',
+  '🛎 “Chi arriva oggi?” · “Chi parte domani?”',
+  '🔒 “Chiudi la camera 105 dal 12 al 15 novembre”',
+  '🏷 “Cambia il prezzo della camera 101 a 85 euro, 80 in contanti”',
+  '📆 “Metti il prezzo di tutte le camere a 150 euro ad agosto”',
+  '💳 “LA-7Q24N ha pagato 200 euro in contanti”',
+  '✉️ “Scrivi ai clienti tedeschi che a dicembre siamo aperti”',
+  '📋 “Mostrami le prenotazioni di dicembre”',
+  '✍️ “Crea una descrizione più elegante per la camera 108”',
+  '🌙 “Spegni il report della sera” · “Manda il report alle 22”',
   ...hotelToolsHelp,
-  '• “Come aggiungo una camera?” — ti spiego passo passo',
-  'Puoi anche mandarmi un vocale. Ogni modifica ti chiede conferma prima di essere eseguita.',
+  '❓ “Come aggiungo una camera?” e ti spiego passo passo',
+  '',
+  '✅ Ogni modifica ti chiede conferma prima di essere eseguita.',
 ].join('\n');
 
 type Intent = { tool: string; args: Record<string, unknown> } | { special: 'help' | 'describe' | 'email' | 'chat'; room?: string } | null;
@@ -577,6 +580,8 @@ export async function handleMessage(text: string, ctx: AssistantContext, opts: {
     if (reply.pending) reply.pending = { ...reply.pending, summary: tr.summary ?? reply.pending.summary };
   }
   if (reply.ui) reply.ui = await localizeSteps(reply.ui, lang);
+  reply.text = cleanMarkdown(reply.text);
+  if (reply.pending) reply.pending = { ...reply.pending, summary: cleanMarkdown(reply.pending.summary) };
   return reply;
 }
 
@@ -669,7 +674,8 @@ export async function resolvePending(id: string, decision: 'confirm' | 'cancel',
   const out = await resolveInner(id, decision, ctx);
   const ok = out.startsWith('Fatto');
   const ui = ok && p && decision === 'confirm' ? replayFor(p.tool, p.args, readDb()) : undefined;
-  const text = lang === 'it' ? out : ((await localize({ text: out }, lang)).text ?? out);
+  const sign = ok ? '✅ ' : decision === 'cancel' ? '✖️ ' : '⚠️ ';
+  const text = sign + cleanMarkdown(lang === 'it' ? out : ((await localize({ text: out }, lang)).text ?? out));
   return { text, ui: await localizeSteps(ui, lang) };
 }
 
@@ -842,7 +848,7 @@ async function chatAnswer(text: string, lang: Locale = 'it', replyTo?: string): 
         [
           {
             role: 'system',
-            content: `Sei l'assistente del pannello di gestione di Hotel L'Ancora (piccolo hotel 3 stelle). Il proprietario non è esperto di tecnologia: rispondi breve (massimo 6 righe), concreto, con passi semplici e i nomi esatti dei menu (i nomi dei menu restano in italiano, tra virgolette). Rispondi SEMPRE in ${LANG_NAME[lang]}, la lingua in cui ti scrive, con un tono caldo e curato. Se chiede di fare un'operazione, proponi SOLO comandi di questa lista (tradotti nella sua lingua), mai altri:
+            content: `Sei l'assistente del pannello di gestione di Hotel L'Ancora (piccolo hotel 3 stelle). Il proprietario non è esperto di tecnologia: rispondi breve (massimo 6 righe), concreto, con passi semplici e i nomi esatti dei menu. Scrivi testo semplice, MAI markdown (niente asterischi, cancelletti, trattini o grassetto): una cosa per riga, e se aiuta inizia la riga con un’emoji adatta (es. 📅, 💶, 🛏, ✅) (i nomi dei menu restano in italiano, tra virgolette). Rispondi SEMPRE in ${LANG_NAME[lang]}, la lingua in cui ti scrive, con un tono caldo e curato. Se chiede di fare un'operazione, proponi SOLO comandi di questa lista (tradotti nella sua lingua), mai altri:
 ${HELP}
 Per tutto il resto spiega dove si fa nel pannello: sotto la tua risposta comparirà il pulsante «Mostramelo sullo schermo», che fa vedere i passaggi. Non inventare funzioni. Guida del pannello:\n${GUIDE.map((g) => `- ${g.a}`).join('\n')}`,
           },

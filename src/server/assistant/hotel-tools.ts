@@ -158,11 +158,11 @@ export function hotelIntent(t: string, text: string): { tool: string; args: Reco
 }
 
 export const hotelToolsHelp = [
-  '• “Oggi” — arrivi, partenze, camere libere e cosa incassare',
-  '• “Prezzi” — prezzi con carta e in contanti, stagioni, tassa di soggiorno',
-  '• “Pagamenti” — Stripe, bonifici e quanto puoi ricevere subito',
-  '• “Accendi l’aumento prezzi online del 2%” / “Spegni l’aumento prezzi online”',
-  '• “Accendi la tassa di soggiorno a 2 euro” / “Spegni la tassa di soggiorno”',
-  '• “Accendi il bonifico immediato automatico”',
+  '📅 “Oggi”: arrivi, partenze, camere libere',
+  '🏷 “Prezzi”: con carta e in contanti, stagioni, tassa',
+  '💳 “Pagamenti”: Stripe, bonifici, quanto puoi ricevere subito',
+  '📈 “Accendi l’aumento prezzi online del 2%”',
+  '🏛 “Accendi la tassa di soggiorno a 2 euro”',
+  '⚡ “Accendi il bonifico immediato automatico”',
 ];
 
