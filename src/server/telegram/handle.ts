@@ -134,7 +134,7 @@ export async function handleTelegramUpdate(update: Update): Promise<void> {
 
     const reply = await converse(text, { user, channel: 'telegram', chatId, replyTo: (msg.reply_to_message?.text ?? msg.reply_to_message?.caption)?.slice(0, 1600) }, { voice, image });
     for (const src of (reply.intent === 'add_room_photo' ? [] : (reply.images ?? [])).slice(0, 4)) {
-      const buf = readAnyImage(src);
+      const buf = await readAnyImage(src);
       if (buf) await sendPhoto(chatId, buf).catch(() => null);
     }
     await sendText(

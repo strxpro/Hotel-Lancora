@@ -10,6 +10,7 @@ import { useI18n } from '../providers';
 import { PhotoMorph } from '../photo-morph';
 import { submitReply, submitReview } from '@/app/[locale]/recensione/actions';
 import { HINTS, RoomPicker, RotatingHint } from './review-inputs';
+import { shrinkPhoto } from '@/lib/shrink-photo';
 
 export type ReviewView = {
   id: string;
@@ -269,7 +270,7 @@ export function ReviewForm({ token, rooms, roomId: fixedRoom, onDone, title }: {
     setUploading(true);
     for (const f of [...files].slice(0, 3 - photos.length)) {
       const fd = new FormData();
-      fd.append('file', f);
+      fd.append('file', await shrinkPhoto(f, 1600, 0.82));
       const r = await fetch('/api/review-photo', { method: 'POST', body: fd }).catch(() => null);
       const j = r ? ((await r.json().catch(() => ({}))) as { src?: string }) : {};
       if (j.src) setPhotos((p) => [...p, j.src!].slice(0, 3));

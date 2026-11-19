@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { Flag } from '@/components/site/flags';
 import { Button, Dialog, Toggle, useAction, useToast } from './ui';
 import { TokenEditor } from './token-editor';
+import { shrinkPhoto } from '@/lib/shrink-photo';
 import { deleteCampaignAction, draftEmailAction, duplicateCampaignAction, emailThemesAction, generateEmailImageAction, previewCampaignAction, saveCampaignAction, sendCampaignAction, sendCampaignTestAction } from '@/app/admin/actions/marketing';
 
 type Draft = Omit<Campaign, 'id' | 'status' | 'sentAt' | 'recipients' | 'createdAt'> & { id?: string };
@@ -134,8 +135,8 @@ export function EmailStudio({ campaigns, images, smtp, ai, defaultTestEmail, gue
 
   const upload = async (f: File) => {
     const fd = new FormData();
-    fd.append('file', f);
     setImgBusy(true);
+    fd.append('file', await shrinkPhoto(f));
     const r = await fetch('/api/admin/upload', { method: 'POST', body: fd }).catch(() => null);
     const j = r ? ((await r.json()) as { src?: string; error?: string }) : { error: 'Caricamento non riuscito' };
     setImgBusy(false);

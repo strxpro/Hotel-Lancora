@@ -1,7 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { NextResponse } from 'next/server';
-import { DATA_DIR } from '@/server/db/store';
+import { putMedia } from '@/server/media-store';
 import { ipOf, rateLimit, sameOrigin } from '@/server/security';
 
 export const dynamic = 'force-dynamic';
@@ -28,11 +26,7 @@ export async function POST(req: Request) {
     const meta = await img.metadata();
     if (!meta.width || !meta.height) throw new Error('bad');
     const out = await img.resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 80 }).toBuffer({ resolveWithObject: true });
-    const name = `${crypto.randomUUID()}.webp`;
-    const dir = path.join(DATA_DIR, 'uploads');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, name), out.data);
-    return NextResponse.json({ src: `/api/media/${name}` });
+    return NextResponse.json({ src: await putMedia(`${crypto.randomUUID()}.webp`, out.data) });
   } catch {
     return NextResponse.json({ error: 'Invalid image' }, { status: 422 });
   }

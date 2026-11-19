@@ -5,6 +5,8 @@ import type { DB } from '@/lib/types';
 import { buildSeed } from './seed';
 import { demoRoomReviews } from './demo-reviews';
 import { todayISO } from '@/lib/dates';
+import { after as afterResponse } from 'next/server';
+import { CLOUD, CloudStoreError, rowCas, rowGet, rowId, rowVersion } from './cloud-row';
 
 /**
  * Demo persistence: a single JSON document on disk, written atomically (tmp file + rename).
@@ -90,8 +92,72 @@ function normalize(db: DB): DB {
   return db;
 }
 
+/* ------------------------------------------------------------------ */
+/* cloud mode (Vercel): the document lives in Supabase (cloud-row.ts)   */
+/* ------------------------------------------------------------------ */
+
+/** How long a copy is trusted before asking Supabase for its version again (one tiny query). */
+const CLOUD_TTL = Number(process.env.STORE_TTL_MS || 1000);
+type CloudCache = { db: DB; checkedAt: number };
+const cg = globalThis as unknown as { __lancoraCloudDb?: CloudCache };
+
+function cloudRead(force = false): DB {
+  const c = cg.__lancoraCloudDb;
+  if (c && !force && Date.now() - c.checkedAt < CLOUD_TTL) return c.db;
+  if (c && !force) {
+    let v: number | null = null;
+    try {
+      v = rowVersion(rowId());
+    } catch (e) {
+      // Supabase did not answer: keep showing the last copy for a few seconds (writes still check)
+      console.error('[store]', (e as Error).message);
+      c.checkedAt = Date.now() - CLOUD_TTL + 3000;
+      return c.db;
+    }
+    if (v === c.db.version) {
+      c.checkedAt = Date.now();
+      return c.db;
+    }
+  }
+  const row = rowGet<DB>(rowId());
+  if (!row) throw new CloudStoreError(`Nessun dato in Supabase (hotel_state "${rowId()}"): copia prima i dati dell’hotel.`);
+  const db = normalize(row.data);
+  db.version = row.version;
+  if (db.schemaVersion !== SCHEMA_VERSION) console.error(`[db] dati nel formato ${db.schemaVersion}, il sito si aspetta ${SCHEMA_VERSION}: usati così come sono.`);
+  cg.__lancoraCloudDb = { db, checkedAt: Date.now() };
+  return db;
+}
+
+/** Runs what was registered with afterCommit(): after the answer, kept alive by the host (waitUntil). */
+function runAfter(cbs: (() => void | Promise<void>)[]): void {
+  if (!cbs.length) return;
+  const job = async () => {
+    for (const cb of cbs) {
+      try {
+        await cb();
+      } catch (e) {
+        console.error('[afterCommit]', e);
+      }
+    }
+  };
+  if (CLOUD) {
+    try {
+      afterResponse(job);
+      return;
+    } catch {
+      /* outside a request (tests, scripts): run it now */
+    }
+  }
+  for (const cb of cbs) {
+    Promise.resolve()
+      .then(cb)
+      .catch((e) => console.error('[afterCommit]', e));
+  }
+}
+
 /** Read-only snapshot. Never mutate the returned object — use mutate(). */
 export function readDb(): DB {
+  if (CLOUD) return cloudRead();
   ensureFile();
   const st = fs.statSync(DB_FILE);
   const c = g.__lancoraDb;
@@ -118,6 +184,7 @@ export function readDb(): DB {
  * afterCommit() run once the write succeeded (e.g. Telegram, SMTP).
  */
 export function mutate<T>(fn: (db: DB) => T): T {
+  if (CLOUD) return cloudMutate(fn);
   const db = structuredClone(readDb());
   const prev = g.__lancoraAfter;
   const after: (() => void | Promise<void>)[] = [];
@@ -143,20 +210,53 @@ export function mutate<T>(fn: (db: DB) => T): T {
       /* a closed stream */
     }
   }
-  for (const cb of after) {
-    Promise.resolve()
-      .then(cb)
-      .catch((e) => console.error('[afterCommit]', e));
-  }
+  runAfter(after);
   return result;
+}
+
+/**
+ * The same atomic change, against Supabase: made on a fresh copy and saved only if nobody saved in
+ * between (compare-and-set on the version). If somebody did, the change is made again on their
+ * newer data, so a booking can never overwrite another one.
+ */
+function cloudMutate<T>(fn: (db: DB) => T): T {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const base = cloudRead(attempt > 0);
+    const db = structuredClone(base);
+    const prev = g.__lancoraAfter;
+    const after: (() => void | Promise<void>)[] = [];
+    g.__lancoraAfter = after;
+    let result: T;
+    try {
+      result = fn(db);
+    } finally {
+      g.__lancoraAfter = prev ?? null;
+    }
+    db.version = base.version + 1;
+    db.updatedAt = new Date().toISOString();
+    if (rowCas(rowId(), base.version, db.version, db)) {
+      cg.__lancoraCloudDb = { db, checkedAt: Date.now() };
+      runAfter(after);
+      return result;
+    }
+  }
+  throw new CloudStoreError('Troppe modifiche nello stesso momento: riprova tra un attimo.');
 }
 
 export function afterCommit(cb: () => void | Promise<void>): void {
   if (g.__lancoraAfter) g.__lancoraAfter.push(cb);
-  else Promise.resolve().then(cb).catch((e) => console.error('[afterCommit]', e));
+  else runAfter([cb]);
 }
 
 export function resetDb(): DB {
+  if (CLOUD) {
+    // the demo reset in the cloud: the seed replaces the document, with the next version
+    const cur = cloudRead(true);
+    const next: DB = { ...buildSeed(), version: cur.version + 1 };
+    if (!rowCas(rowId(), cur.version, next.version, next)) throw new CloudStoreError('Dati cambiati nel frattempo: riprova.');
+    cg.__lancoraCloudDb = { db: next, checkedAt: Date.now() };
+    return next;
+  }
   const db = buildSeed();
   fs.mkdirSync(DATA_DIR, { recursive: true });
   writeAtomic(db);

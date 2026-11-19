@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { Block, DB, NotificationType } from '@/lib/types';
 import { todayISO } from '@/lib/dates';
 import { DATA_DIR, mutate, readDb } from './db/store';
+import { CLOUD, piecePut } from './db/cloud-row';
 import { audit } from './events';
 import { resetVisits } from './visits';
 
@@ -65,10 +66,18 @@ export function startRealData(actor: string): { backup: string; removed: DemoSum
   if (!before.settings.demoMode) throw new GoLiveError('Il sito usa già i dati veri.');
   const removed = demoSummary(before);
 
-  const dir = path.join(DATA_DIR, 'backup');
-  fs.mkdirSync(dir, { recursive: true });
-  const backup = path.join(dir, `dati-demo-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-  fs.writeFileSync(backup, JSON.stringify(before));
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  let backup: string;
+  if (CLOUD) {
+    // no disk on this hosting: the copy goes next to the data in Supabase
+    piecePut(`backup-${stamp}`, before);
+    backup = `Supabase hotel_state · backup-${stamp}`;
+  } else {
+    const dir = path.join(DATA_DIR, 'backup');
+    fs.mkdirSync(dir, { recursive: true });
+    backup = path.join(dir, `dati-demo-${stamp}.json`);
+    fs.writeFileSync(backup, JSON.stringify(before));
+  }
 
   mutate((db) => {
     db.bookings = [];

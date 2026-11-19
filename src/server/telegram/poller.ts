@@ -152,6 +152,8 @@ export function startTelegramListener() {
   // `npm run dev` next to the real site never listens to the bot (the two kept kicking each other
   // off and every message was answered twice); DEV_JOBS=on allows it on purpose
   if (process.env.NODE_ENV === 'development' && process.env.DEV_JOBS !== 'on') return;
+  // hosting without a lasting process (Vercel): the bot always answers through its webhook
+  if (process.env.STORE_MODE === 'cloud') return;
   state.started = true;
   // a listener on a signal replaces Node's default 'exit': if nothing else ends the process within a
   // moment (the web server closing normally does), end it here so no old copy stays behind

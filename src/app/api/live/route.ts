@@ -9,6 +9,8 @@ export const runtime = 'nodejs';
  * without reloading. A slow check also catches changes written by other processes.
  */
 export function GET(req: Request) {
+  // no long-lived connections on serverless hosting: the browser polls /api/version instead
+  if (process.env.STORE_MODE === 'cloud') return new Response(null, { status: 204 });
   const enc = new TextEncoder();
   let last = -1;
   let cleanup = () => undefined as void;

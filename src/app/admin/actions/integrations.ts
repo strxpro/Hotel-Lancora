@@ -286,7 +286,11 @@ export async function autoSetupAction() {
     );
 
     // database copy
-    if (!cloudConfigured()) out.push({ id: 'db', label: 'Archivio dati', state: 'todo', detail: 'I dati vivono solo su questo computer.', todo: 'Scrivi SUPABASE_URL e SUPABASE_SECRET_KEY in .env.local e riavvia.' });
+    const { CLOUD } = await import('@/server/db/cloud-row');
+    // hosting without a disk (Vercel): Supabase IS the archive, every change is saved there directly;
+    // the tables are refreshed by the hourly job. Nothing to copy here (and no second writer).
+    if (CLOUD) out.push({ id: 'db', label: 'Archivio dati', state: 'ok', detail: 'I dati sono al sicuro nel cloud e si aggiornano a ogni modifica.' });
+    else if (!cloudConfigured()) out.push({ id: 'db', label: 'Archivio dati', state: 'todo', detail: 'I dati vivono solo su questo computer.', todo: 'Scrivi SUPABASE_URL e SUPABASE_SECRET_KEY in .env.local e riavvia.' });
     else {
       const { syncTables, verifyTables, shadowRead, tablesSql, tablesStatus } = await import('@/server/db/tables-sync');
       const remote = await cloudFetch().catch(() => null);

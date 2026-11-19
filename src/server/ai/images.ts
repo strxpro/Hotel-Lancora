@@ -1,7 +1,7 @@
 import 'server-only';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DATA_DIR } from '../db/store';
+import { getMedia, putMedia } from '../media-store';
 import { groqKey } from '../integrations';
 import { groqModel } from './provider';
 
@@ -9,21 +9,12 @@ import { groqModel } from './provider';
 export async function saveImage(buf: Buffer, maxSide = 1600): Promise<string> {
   const sharp = (await import('sharp')).default;
   const out = await sharp(buf, { failOn: 'error' }).rotate().resize({ width: maxSide, height: maxSide, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
-  const name = `${crypto.randomUUID()}.webp`;
-  const dir = path.join(DATA_DIR, 'uploads');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, name), out);
-  return `/api/media/${name}`;
+  return putMedia(`${crypto.randomUUID()}.webp`, out);
 }
 
-export function readSavedImage(src: string): Buffer | null {
+export async function readSavedImage(src: string): Promise<Buffer | null> {
   const m = src.match(/^\/api\/media\/([\w-]+\.(?:webp|jpe?g|png))$/);
-  if (!m) return null;
-  try {
-    return fs.readFileSync(path.join(DATA_DIR, 'uploads', m[1]!));
-  } catch {
-    return null;
-  }
+  return m ? getMedia(m[1]!) : null;
 }
 
 /**
@@ -77,13 +68,17 @@ export async function lookAtMany(bufs: Buffer[], question: string, langName: str
 }
 
 /** Our uploads or a file of the public site folder (demo photos), never outside them. */
-export function readAnyImage(src: string): Buffer | null {
-  const up = readSavedImage(src);
+export async function readAnyImage(src: string): Promise<Buffer | null> {
+  const up = await readSavedImage(src);
   if (up) return up;
   if (!/^\/[\w\-./]+\.(?:webp|jpe?g|png|avif)$/i.test(src) || src.includes('..')) return null;
   try {
     return fs.readFileSync(path.join(process.cwd(), 'public', src));
   } catch {
-    return null;
+    // on hosting without the project folder (Vercel) the public files are served, not on disk
+    const base = (process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '')).replace(/\/$/, '');
+    if (!base) return null;
+    const r = await fetch(`${base}${src}`, { signal: AbortSignal.timeout(15000) }).catch(() => null);
+    return r?.ok ? Buffer.from(await r.arrayBuffer()) : null;
   }
 }

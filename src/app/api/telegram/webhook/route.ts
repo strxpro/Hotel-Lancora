@@ -5,6 +5,8 @@ import { handleTelegramUpdate, type Update } from '@/server/telegram/handle';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+// a voice message (transcription + assistant) can take a while on serverless hosting
+export const maxDuration = 120;
 
 function secretOk(req: Request): boolean {
   const expected = process.env.TELEGRAM_WEBHOOK_SECRET ?? '';

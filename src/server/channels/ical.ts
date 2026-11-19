@@ -6,6 +6,7 @@ import type { Booking, DB } from '@/lib/types';
 import { addDays, eachNight, fmtDate, fmtDateTime, isValidISODate, todayISO } from '@/lib/dates';
 import { isBookingActive } from '@/lib/availability';
 import { mutate, newId, readDb } from '../db/store';
+import { CLOUD, pieceGet, piecePut } from '../db/cloud-row';
 import { notify } from '../events';
 
 /**
@@ -127,16 +128,19 @@ type Memory = {
   stale: Record<string, string>;
 };
 const MEMORY_FILE = path.join(process.env.DATA_DIR || path.join(process.cwd(), 'data'), 'calendari.json');
-const gm = globalThis as typeof globalThis & { __laCalMemory?: Memory };
+const gm = globalThis as typeof globalThis & { __laCalMemory?: Memory; __laCalMemoryAt?: number };
 
 function memory(): Memory {
+  // hosting without a disk: the memory sits in Supabase and is read again after a minute (another instance may have changed it)
+  if (CLOUD && gm.__laCalMemory && Date.now() - (gm.__laCalMemoryAt ?? 0) > 60_000) gm.__laCalMemory = undefined;
   if (!gm.__laCalMemory) {
     let m: Partial<Memory> = {};
     try {
-      m = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8')) as Partial<Memory>;
+      m = CLOUD ? (pieceGet<Partial<Memory>>('calendars') ?? {}) : (JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8')) as Partial<Memory>);
     } catch {
       /* first run */
     }
+    gm.__laCalMemoryAt = Date.now();
     gm.__laCalMemory = { reads: m.reads ?? {}, seen: m.seen ?? {}, alerted: m.alerted ?? {}, empty: m.empty ?? {}, stale: m.stale ?? {} };
   }
   return gm.__laCalMemory;
@@ -144,6 +148,7 @@ function memory(): Memory {
 
 function saveMemory() {
   try {
+    if (CLOUD) return piecePut('calendars', memory());
     fs.mkdirSync(path.dirname(MEMORY_FILE), { recursive: true });
     fs.writeFileSync(`${MEMORY_FILE}.tmp`, JSON.stringify(memory()));
     fs.renameSync(`${MEMORY_FILE}.tmp`, MEMORY_FILE);

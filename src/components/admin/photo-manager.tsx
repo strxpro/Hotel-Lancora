@@ -7,23 +7,15 @@ import type { LibraryPhoto } from '@/server/library';
 import { addToLibraryAction, libraryAction } from '@/app/admin/actions/library';
 import type { Photo } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { shrinkPhoto } from '@/lib/shrink-photo';
 
 type Upload = { id: string; name: string; progress: number; error: string | null; preview: string };
 
 /** Resize + compress in the browser before upload (keeps uploads fast on hotel Wi-Fi / 4G). */
 async function compress(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file).catch(() => null);
-  if (!bitmap) throw new Error('Formato immagine non leggibile');
-  const max = 2200;
-  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/webp', 0.84));
-  if (!blob) throw new Error('Compressione non riuscita');
-  return blob;
+  const out = await shrinkPhoto(file);
+  if (out === file) throw new Error('Formato immagine non leggibile');
+  return out;
 }
 
 function upload(blob: Blob, onProgress: (p: number) => void): Promise<{ src: string; width: number; height: number }> {

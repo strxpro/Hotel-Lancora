@@ -2,6 +2,7 @@ import 'server-only';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DATA_DIR, readDb } from './db/store';
+import { CLOUD, pieceGet, piecePut } from './db/cloud-row';
 
 /**
  * The hotel's photo library: every picture uploaded once (by the owner or by whoever builds the site)
@@ -13,6 +14,13 @@ export type LibraryPhoto = { src: string; width: number; height: number; addedAt
 const FILE = () => path.join(DATA_DIR, 'libreria.json');
 
 function readList(): Omit<LibraryPhoto, 'rooms'>[] {
+  if (CLOUD) {
+    try {
+      return pieceGet<Omit<LibraryPhoto, 'rooms'>[]>('library') ?? [];
+    } catch {
+      return [];
+    }
+  }
   try {
     return JSON.parse(fs.readFileSync(FILE(), 'utf8')) as Omit<LibraryPhoto, 'rooms'>[];
   } catch {
@@ -20,6 +28,7 @@ function readList(): Omit<LibraryPhoto, 'rooms'>[] {
   }
 }
 function writeList(list: Omit<LibraryPhoto, 'rooms'>[]) {
+  if (CLOUD) return piecePut('library', list);
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(`${FILE()}.tmp`, JSON.stringify(list, null, 1));
   fs.renameSync(`${FILE()}.tmp`, FILE());

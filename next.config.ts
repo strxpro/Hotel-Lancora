@@ -1,4 +1,8 @@
 import type { NextConfig } from 'next';
+import { appUrlFromVercel } from './src/lib/vercel-url';
+
+// the build on Vercel (sitemap, robots, page metadata) also needs the site's own address
+appUrlFromVercel();
 
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -18,6 +22,8 @@ const nextConfig: NextConfig = {
   // a new version can be built next to the running one (NEXT_BUILD_DIR=.next-build) and swapped in seconds
   distDir: process.env.NEXT_BUILD_DIR || '.next',
   poweredByHeader: false,
+  // read at run time by the panel's database check: on Vercel only traced files reach the server
+  outputFileTracingIncludes: { '/**': ['./supabase/hotel-tables.sql'] },
   images: {
     qualities: [60, 75, 85],
     formats: ['image/avif', 'image/webp'],

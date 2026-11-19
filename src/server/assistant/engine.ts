@@ -348,7 +348,7 @@ const TOOLS: Record<string, ToolDef> = {
       const sharp = (await import('sharp')).default;
       const added = [];
       for (const src of a.srcs?.length ? a.srcs : [a.src]) {
-        const buf = readSavedImage(src);
+        const buf = await readSavedImage(src);
         const meta = buf ? await sharp(buf).metadata() : null;
         added.push({ id: newId('ph-'), src, alt: `${r.name} · Hotel L’Ancora`, width: meta?.width ?? 1600, height: meta?.height ?? 1067, demo: false });
       }
@@ -543,7 +543,7 @@ async function imageMessage(text: string, ctx: AssistantContext, srcs: string[],
     return { text: summary, pending: { id: p.id, summary }, intent: 'add_room_photo', engine: 'regole', images: srcs };
   }
   if (!visionConfigured()) return { text: 'Ho ricevuto la foto. Per capire le immagini collega l’AI gratuita (Groq) in Impostazioni → Collegamenti. Intanto puoi scrivermi “aggiungi alla camera 101” per metterla nella galleria.', intent: 'vision', engine: 'regole' };
-  const bufs = srcs.map((s) => readSavedImage(s)).filter((b): b is Buffer => Boolean(b));
+  const bufs = (await Promise.all(srcs.map((s) => readSavedImage(s)))).filter((b): b is Buffer => Boolean(b));
   if (!bufs.length) return { text: 'Non riesco ad aprire la foto, riprova.', intent: 'vision', engine: 'regole' };
   try {
     const out = await lookAtMany(bufs, text, LANG_NAME[lang]);

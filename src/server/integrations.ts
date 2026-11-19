@@ -2,6 +2,7 @@ import 'server-only';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DATA_DIR } from './db/store';
+import { CLOUD, rowGet, rowId, rowPut, rowVersion } from './db/cloud-row';
 
 /**
  * Keys the owner connects from the panel (Impostazioni → Collegamenti) instead of editing .env.
@@ -39,7 +40,27 @@ export interface StoredIntegrations {
 const FILE = path.join(DATA_DIR, 'integrations.json');
 const g = globalThis as unknown as { __lancoraInt?: { mtimeMs: number; data: StoredIntegrations } };
 
+/* cloud mode: the same keys in Supabase, row "<STORE_ROW>:integrations" (only the server key reads it) */
+const ci = globalThis as unknown as { __lancoraCloudInt?: { version: number; data: StoredIntegrations; checkedAt: number } };
+function cloudIntegrations(): StoredIntegrations {
+  const c = ci.__lancoraCloudInt;
+  if (c && Date.now() - c.checkedAt < 5000) return c.data;
+  try {
+    if (c && rowVersion(rowId('integrations')) === c.version) {
+      c.checkedAt = Date.now();
+      return c.data;
+    }
+    const row = rowGet<StoredIntegrations>(rowId('integrations'));
+    ci.__lancoraCloudInt = { version: row?.version ?? 0, data: row?.data ?? {}, checkedAt: Date.now() };
+    return ci.__lancoraCloudInt.data;
+  } catch (e) {
+    console.error('[integrations]', (e as Error).message);
+    return c?.data ?? {};
+  }
+}
+
 export function readIntegrations(): StoredIntegrations {
+  if (CLOUD) return cloudIntegrations();
   try {
     const st = fs.statSync(FILE);
     if (g.__lancoraInt?.mtimeMs === st.mtimeMs) return g.__lancoraInt.data;
@@ -54,6 +75,12 @@ export function readIntegrations(): StoredIntegrations {
 export function writeIntegrations(patch: Partial<StoredIntegrations>): StoredIntegrations {
   const next: StoredIntegrations = { ...readIntegrations(), ...patch, updatedAt: new Date().toISOString() };
   for (const k of Object.keys(next) as (keyof StoredIntegrations)[]) if (next[k] === undefined) delete next[k];
+  if (CLOUD) {
+    const version = (ci.__lancoraCloudInt?.version ?? 0) + 1;
+    rowPut(rowId('integrations'), version, next);
+    ci.__lancoraCloudInt = { version, data: next, checkedAt: Date.now() };
+    return next;
+  }
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(FILE, JSON.stringify(next, null, 2), { encoding: 'utf8', mode: 0o600 });
   g.__lancoraInt = undefined;

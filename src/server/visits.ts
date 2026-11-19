@@ -3,6 +3,24 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { todayISO } from '@/lib/dates';
+import { CLOUD, rowCas, rowGet, rowId, rowPut } from './db/cloud-row';
+
+/* cloud mode: the daily totals in Supabase, row "<STORE_ROW>:visits" (each count is a compare-and-set) */
+type VisitsDoc = { days: Record<string, VisitDay> };
+function cloudChange(update: (days: Record<string, VisitDay>) => void): void {
+  try {
+    for (let i = 0; i < 3; i++) {
+      const row = rowGet<VisitsDoc>(rowId('visits'));
+      const days = { ...(row?.data.days ?? {}) };
+      update(days);
+      const keep = Object.fromEntries(Object.keys(days).sort().slice(-90).map((k) => [k, days[k]!]));
+      if (!row) return rowPut(rowId('visits'), 1, { days: keep });
+      if (rowCas(rowId('visits'), row.version, row.version + 1, { days: keep })) return;
+    }
+  } catch (e) {
+    console.error('[visite]', (e as Error).message);
+  }
+}
 
 /**
  * How many people visited the site, per day, for the owner's daily report.
@@ -63,23 +81,41 @@ export function recordVisit(ip: string, userAgent: string, pathname: string): vo
     seen = new Set();
     s.seen.set(day, seen);
   }
-  if (!seen.has(who)) {
-    seen.add(who);
-    d.visitors += 1;
-  }
-  d.views += 1;
+  const fresh = !seen.has(who);
+  if (fresh) seen.add(who);
   const p = pathname.replace(/^\/(en|pl|de|fr|es)(?=\/|$)/, '') || '/';
-  if (p.startsWith('/prenotazione')) d.bookingViews += 1;
-  if (p.startsWith('/camere/')) d.roomViews += 1;
+  const add = (x: VisitDay) => {
+    if (fresh) x.visitors += 1;
+    x.views += 1;
+    if (p.startsWith('/prenotazione')) x.bookingViews += 1;
+    if (p.startsWith('/camere/')) x.roomViews += 1;
+  };
+  if (CLOUD) return cloudChange((days) => add((days[day] ??= { ...EMPTY })));
+  add(d);
   save(s);
 }
 
 export function visitsOn(date: string): VisitDay {
+  if (CLOUD) {
+    try {
+      return rowGet<VisitsDoc>(rowId('visits'))?.data.days[date] ?? { ...EMPTY };
+    } catch {
+      return { ...EMPTY };
+    }
+  }
   return state().days[date] ?? { ...EMPTY };
 }
 
 /** Start counting from zero (the switch from the demo to real data): written at once. */
 export function resetVisits(): void {
+  if (CLOUD) {
+    try {
+      rowPut(rowId('visits'), Date.now(), { days: {} });
+    } catch (e) {
+      console.error('[visite]', (e as Error).message);
+    }
+    return;
+  }
   const s = state();
   s.days = {};
   s.seen.clear();

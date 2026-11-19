@@ -8,12 +8,18 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs' || process.env.NEXT_PHASE === 'phase-production-build') return;
+  // on Vercel: the site's own address (domain or *.vercel.app) when APP_URL is not set
+  const { appUrlFromVercel } = await import('./lib/vercel-url');
+  appUrlFromVercel();
   // `npm run dev` next to the real site: no second Telegram listener (the two kept kicking each
   // other off), no cloud sync, no sweepers or webhook changes. DEV_JOBS=on turns them on on purpose.
   if (process.env.NODE_ENV === 'development' && process.env.DEV_JOBS !== 'on') {
     console.log('[dev] versione di sviluppo: Telegram, copia cloud e lavori automatici spenti (DEV_JOBS=on per accenderli)');
     return;
   }
+  // hosting without a disk (Vercel): the data are in Supabase and every job runs from /api/cron/*;
+  // nothing may stay running in the background here (the bot answers through its webhook)
+  if (process.env.STORE_MODE === 'cloud') return;
   try {
     const { startFromTables } = await import('./server/db/tables-sync');
     await startFromTables();

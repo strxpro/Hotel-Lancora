@@ -131,6 +131,8 @@ function liveEmit(v: number) {
   live.last = v;
 }
 
+const CLOUD_POLL = process.env.NEXT_PUBLIC_STORE_MODE === 'cloud';
+
 /** One connection per page: the server pushes every change (SSE); polling only as a fallback. */
 function liveStart() {
   if (live.es || live.poll || typeof window === 'undefined') return;
@@ -146,9 +148,10 @@ function liveStart() {
       }
     };
     tick();
-    live.poll = window.setInterval(tick, 4000);
+    live.poll = window.setInterval(tick, CLOUD_POLL ? 10000 : 4000);
   };
-  if (!('EventSource' in window) || window.location.hostname.endsWith('.trycloudflare.com')) return poll();
+  // hosting without a long-lived server (Vercel): ask for the version from time to time
+  if (CLOUD_POLL || !('EventSource' in window) || window.location.hostname.endsWith('.trycloudflare.com')) return poll();
   const es = new EventSource('/api/live');
   live.es = es;
   es.onmessage = (e) => {
