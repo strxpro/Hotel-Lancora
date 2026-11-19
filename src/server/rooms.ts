@@ -5,6 +5,7 @@ import { isBookingActive, isPubliclyBookable } from '@/lib/availability';
 import { addDays, diffDays, eachNight, fmtDate, isValidISODate, rangesOverlap, todayISO } from '@/lib/dates';
 import { carveRooms } from '@/lib/period-prices';
 import { slugify } from '@/lib/utils';
+import { textWithoutNumber, titleWithoutNumber } from '@/lib/room-number';
 import { bedsCountOf, bedsText, parseBeds, type BedConfig } from '@/lib/beds';
 import { mutate, newId, readDb } from './db/store';
 import { audit } from './events';
@@ -25,9 +26,11 @@ export function localizeRoom(room: Room, locale: Locale): LocalizedRoom {
   const cfg = room.bedConfig?.length ? room.bedConfig : locale === 'it' ? [] : parseBeds(room.beds);
   const beds = cfg.length ? bedsText(cfg, locale) : room.beds;
   const base = { ...room, amenities, beds };
-  if (locale === 'it') return { ...base, t: room.text, translated: true };
+  // guests never read the room number, not even inside the texts the owner wrote
+  const clean = (x: RoomText, l: Locale): RoomText => ({ title: titleWithoutNumber(x.title, room.number) || room.name.replace(room.number, '').trim() || x.title, short: textWithoutNumber(x.short, room.number, l), description: textWithoutNumber(x.description, room.number, l) });
+  if (locale === 'it') return { ...base, t: clean(room.text, 'it'), translated: true };
   const tr = room.translations[locale as Exclude<Locale, 'it'>];
-  return { ...base, t: tr?.published ?? room.text, translated: Boolean(tr?.published) };
+  return { ...base, t: clean(tr?.published ?? room.text, tr?.published ? locale : 'it'), translated: Boolean(tr?.published) };
 }
 
 export function publicRooms(db: DB, locale: Locale): LocalizedRoom[] {
@@ -128,8 +131,10 @@ export function saveRoom(input: RoomInput, actor: string): Room {
       return existing;
     }
 
-    let slug = `${number}-${slugify(name)}`.replace(/-+$/, '');
-    while (db.rooms.some((r) => r.slug === slug)) slug += '-x';
+    // the page address carries the name, not the number (guests never see it)
+    const stem = slugify(titleWithoutNumber(name, number) || name.replace(number, '')).replace(/-+$/, '') || 'camera';
+    let slug = stem;
+    for (let k = 2; db.rooms.some((r) => r.slug === slug); k++) slug = `${stem}-${k}`;
     const room: Room = {
       id: newId('room-'),
       number,

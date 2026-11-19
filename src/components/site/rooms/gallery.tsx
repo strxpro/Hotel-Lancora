@@ -76,11 +76,12 @@ export function RoomGallery({ photos, mainRef }: { photos: Photo[]; mainRef: Rea
   return (
     <LayoutGroup id="room-gallery">
       <div className="mt-10 grid gap-3 md:grid-cols-12" data-testid="room-gallery">
-        <div ref={mainRef} className="relative aspect-[4/3] rounded-[1.5rem] md:col-span-8 md:aspect-[16/11]">
+        {/* one photo alone takes the whole width (no empty column beside it), wide like a window */}
+        <div ref={mainRef} className={cn('relative aspect-[4/3] rounded-[1.5rem]', side.length ? 'md:col-span-8 md:aspect-[16/11]' : 'md:col-span-12 md:aspect-[21/9]')}>
           {main && tile(main, 'big', () => zoom(order[0]!), t.room.allPhotos)}
         </div>
         {side.length > 0 && (
-          <div className="grid grid-cols-2 gap-3 md:col-span-4 md:grid-cols-1 md:grid-rows-2">
+          <div className={cn('grid gap-3 md:col-span-4 md:grid-cols-1', side.length === 1 ? 'grid-cols-1 md:grid-rows-1' : 'grid-cols-2 md:grid-rows-2')}>
             {side.map((p, k) => (
               <div key={`slot-${k}`} className="relative aspect-[4/3] md:aspect-auto md:h-full">
                 {tile(p, 'side', () => promote(k + 1), p.alt)}
@@ -100,7 +101,7 @@ export function RoomGallery({ photos, mainRef }: { photos: Photo[]; mainRef: Rea
       )}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-mist">
         <span>{photos.some((p) => p.demo) ? t.room.demoPhotos : ''}</span>
-        {main && (
+        {main && photos.length > 1 && (
           <button type="button" onClick={() => zoom(order[0]!)} className="inline-flex items-center gap-2 font-semibold uppercase tracking-[0.2em] text-navy">
             <Expand className="h-4 w-4" /> {t.room.allPhotos} · {plural(locale, photos.length, t.room.photos)}
           </button>

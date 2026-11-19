@@ -12,7 +12,7 @@ import { cancelText, isFreeCancel } from '@/lib/cancellation';
 import { fill, isLocale, plural } from '@/lib/i18n/config';
 import { getDictionary } from '@/lib/i18n/dictionaries';
 import type { Locale } from '@/lib/types';
-import { diffDays, fmtDateLong, todayISO } from '@/lib/dates';
+import { addDays, diffDays, eachNight, fmtDateLong, todayISO } from '@/lib/dates';
 import { money } from '@/lib/utils';
 import { readDb } from '@/server/db/store';
 import { findBookingByToken } from '@/server/bookings';
@@ -21,7 +21,7 @@ import { FeedbackForm, GuestActions } from '@/components/site/guest-area';
 import { GuestCare } from '@/components/site/guest-care';
 import { threadOf } from '@/server/booking-care';
 import { completeCardSession } from '@/server/payments/card';
-import { isBookingActive } from '@/lib/availability';
+import { isBookingActive, occupiedNights } from '@/lib/availability';
 
 export const metadata: Metadata = { title: 'Area ospite', robots: { index: false, follow: false } };
 
@@ -49,7 +49,7 @@ export default async function GuestPage({ params, searchParams }: { params: Prom
   // a request for a new card shows until it is answered (a cancelled booking only for a no-show fee still due)
   const cardRequest = b.cardRequest && !b.cardRequest.outcome && (b.status !== 'cancelled' || b.noShow?.outcome === 'due') ? b.cardRequest : null;
   const change = b.changeRequest ?? null;
-  const statusLabel = b.status === 'confirmed' ? '✓' : b.status === 'cancelled' ? t.booking.cancelled : t.booking.pendingTitle;
+  const statusLabel = b.status === 'confirmed' ? `✓ ${ACCOUNT_T[locale].states.upcoming}` : b.status === 'cancelled' ? t.booking.cancelled : t.booking.pendingTitle;
   // signed in to the guest area with this booking's e-mail → a way back to the list
   const signedIn = readGuest((await cookies()).get(GUEST_COOKIE)?.value) === b.guest.email.trim().toLowerCase();
 
@@ -112,6 +112,7 @@ export default async function GuestPage({ params, searchParams }: { params: Prom
             thread={threadOf(db, b.id).map((m) => ({ id: m.id, sender: m.sender, body: m.body, at: m.at }))}
             card={cardRequest ? { deadline: cardRequest.deadline, amount: cardRequest.amount, cancelOnExpiry: cardRequest.cancelOnExpiry, expired: new Date(cardRequest.deadline) <= new Date() } : null}
             cardDone={cardDone}
+            busy={b.roomId ? (() => { const mine = new Set(eachNight(b.checkIn, b.checkOut)); return occupiedNights(db, b.roomId, today, addDays(today, 400)).filter((d) => !mine.has(d)); })() : []}
             change={change ? { kind: change.kind, by: change.by, checkIn: change.checkIn, checkOut: change.checkOut, total: change.total, note: change.note, status: change.status, answer: change.answer, recent: Boolean(change.answeredAt && Date.now() - new Date(change.answeredAt).getTime() < 14 * 86_400_000) } : null}
           />
           {stayed ? <FeedbackForm token={b.token} reviewUrl={h.googleReviewUrl} /> : <GuestActions token={b.token} canCancel={canCancel} cancelled={b.status === 'cancelled'} cancelRule={cancelRule} canAskFree={b.status === 'confirmed' && b.checkIn >= today} asked={b.changeRequest?.status === 'pending'} />}

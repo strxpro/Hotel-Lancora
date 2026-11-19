@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHash, createHmac, randomInt, timingSafeEqual } from 'node:crypto';
+import { titleWithoutNumber } from '@/lib/room-number';
 import type { Booking, DB, Locale } from '@/lib/types';
 import { todayISO } from '@/lib/dates';
 import { mutate, readDb } from './db/store';
@@ -142,7 +143,7 @@ export function guestOverview(email: string): { name: string; stays: GuestStay[]
     return {
       token: b.token,
       code: b.code,
-      roomName: r?.name ?? null,
+      roomName: r ? titleWithoutNumber(r.text.title || r.name, r.number) || r.name : null,
       roomNumber: null,
       photo: r?.photos?.[0]?.src ?? null,
       checkIn: b.checkIn,

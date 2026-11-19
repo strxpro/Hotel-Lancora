@@ -162,7 +162,8 @@
   .btn-line:hover {
     background: var(--color-navy);
     border-color: var(--color-navy);
-    color: var(--color-ivory);
+    /* wins over a text-navy utility on the same button: otherwise the label vanishes on the navy fill */
+    color: var(--color-ivory) !important;
   }
   .field {
     width: 100%;

@@ -1,5 +1,6 @@
 import type { Booking, EmailTemplate, Locale, Room, Settings } from '@/lib/types';
 import { diffDays, fmtDateLong, HOTEL_TZ, intlLocale } from '@/lib/dates';
+import { titleWithoutNumber } from '@/lib/room-number';
 import { money } from '@/lib/utils';
 import { cancelText } from '@/lib/cancellation';
 import { TAX_T, taxDetail, touristTaxFor } from '@/lib/tourist-tax';
@@ -177,7 +178,8 @@ function p(text: string): string {
 /** The room's name as the guest sees it on the site, in their language. */
 function roomTitle(room: Room, lang: Locale): string {
   const tr = lang === 'it' ? null : room.translations[lang]?.published?.title;
-  return tr || room.text.title || room.name;
+  // the guest's e-mails never carry the room number
+  return titleWithoutNumber(tr || room.text.title || room.name, room.number) || room.name;
 }
 
 function summary(b: Booking, room: Room | null, settings: Settings, lang: Locale): string {

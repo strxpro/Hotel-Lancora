@@ -23,7 +23,7 @@ import { openLegal } from '../legal-dialog';
 import { createReservation, payAtHotel, simulatePayment, startCashGuarantee, startStripeCheckout } from '@/app/[locale]/prenotazione/actions';
 import { CARE_T } from '@/lib/i18n/care-dict';
 
-export type StayTimes = { checkInFrom: string; checkInTo: string; checkOutBy: string };
+export type StayTimes = { checkInFrom: string; checkInTo: string; checkOutBy: string; /** "Da sapere" (pets, smoking…) in the guest's language */ rules?: { icon: string; text: string; ok: boolean }[] };
 const TIMES_T: Record<Locale, { range: string; from: string; by: string }> = {
   it: { range: 'dalle {a} alle {b}', from: 'dalle {a}', by: 'entro le {t}' },
   en: { range: 'from {a} to {b}', from: 'from {a}', by: 'until {t}' },
@@ -579,6 +579,15 @@ function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput
             </div>
           ))}
         </div>
+        {times?.rules && times.rules.length > 0 && (
+          <ul className="mt-3 flex flex-wrap gap-1.5" data-testid="summary-rules">
+            {times.rules.filter((r) => r.icon !== 'note').map((r) => (
+              <li key={r.text} className={cn('rounded-full px-2.5 py-1 text-[0.68rem] font-medium', r.ok ? 'bg-sand-2 text-navy' : 'bg-terracotta/10 text-terracotta')}>
+                {r.text}
+              </li>
+            ))}
+          </ul>
+        )}
         <dl className="mt-4 grid grid-cols-2 gap-4 border-b border-line pb-5 text-sm">
           <div>
             <dt className="label mb-1">{t.search.guests}</dt>

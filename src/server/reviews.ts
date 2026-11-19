@@ -1,5 +1,6 @@
 import 'server-only';
 import type { DB, Feedback, Locale, ReviewReply } from '@/lib/types';
+import { titleWithoutNumber } from '@/lib/room-number';
 import { LOCALES } from '@/lib/types';
 import { addDays, todayISO } from '@/lib/dates';
 import { localePath } from '@/lib/i18n/config';
@@ -39,7 +40,7 @@ export function reviewDTO(f: Feedback, db: DB, locale: Locale): ReviewDTO {
     lang: f.lang,
     translated: Boolean(tr),
     photos: f.photos ?? [],
-    room: r ? { id: r.id, number: '', name: r.text.title || r.name, slug: r.slug } : null,
+    room: r ? { id: r.id, number: '', name: titleWithoutNumber(r.text.title || r.name, r.number) || r.name, slug: r.slug } : null,
     replies: (f.replies ?? []).map((x) => {
       const t = x.lang !== locale ? x.translations?.[locale] : undefined;
       return { id: x.id, author: x.author, name: x.name, text: t ?? x.text, original: x.text, translated: Boolean(t), createdAt: x.createdAt };

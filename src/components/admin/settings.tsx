@@ -6,7 +6,8 @@ import type { AuditEntry, Settings } from '@/lib/types';
 import { fmtDateTime } from '@/lib/dates';
 import { Button, Card, Dialog, Field, Toggle, useAction } from './ui';
 import { NiceSelect } from './nice-select';
-import { changePasswordAction, saveFaqAction, saveFloorsAction, saveHotelAction, saveServicesAction, saveStayTimesAction } from '@/app/admin/actions/settings';
+import { changePasswordAction, saveFaqAction, saveFloorsAction, saveHotelAction, saveServicesAction, saveStayTimesAction, saveHouseRulesAction } from '@/app/admin/actions/settings';
+import type { HouseRules } from '@/lib/house-rules';
 import { cn } from '@/lib/utils';
 import { resetDemo, startRealDataAction } from '@/app/admin/actions/misc';
 
@@ -366,5 +367,74 @@ export function StayTimesCard({ hotel, tax }: { hotel: Settings['hotel']; tax?: 
         </a>
       </Card>
     </div>
+  );
+}
+
+/**
+ * Da sapere: the house rules as one-tap choices, saved by themselves. They appear on every room page,
+ * in the booking summary and in the chatbot's answers ("si possono portare i cani?").
+ */
+export function HouseRulesCard({ initial }: { initial: HouseRules }) {
+  const [r, setR] = useState(initial);
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const timer = useRef<number | null>(null);
+  const save = (next: HouseRules, wait = 300) => {
+    setR(next);
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(async () => {
+      setState('saving');
+      const res = await saveHouseRulesAction(next).catch(() => null);
+      setState(res?.ok ? 'saved' : 'error');
+    }, wait);
+  };
+  const rows: { k: 'pets' | 'smoking' | 'parties' | 'children'; icon: string; label: string; opts: { v: string; l: string }[] }[] = [
+    { k: 'pets', icon: '🐾', label: 'Animali', opts: [{ v: 'no', l: 'Non ammessi' }, { v: 'yes', l: 'Ammessi' }, { v: 'request', l: 'Su richiesta' }] },
+    { k: 'smoking', icon: '🚭', label: 'Fumo', opts: [{ v: 'outside', l: 'Solo all’aperto' }, { v: 'no', l: 'Vietato ovunque' }] },
+    { k: 'parties', icon: '🎉', label: 'Feste ed eventi', opts: [{ v: 'no', l: 'Non ammessi' }, { v: 'yes', l: 'Su richiesta' }] },
+    { k: 'children', icon: '🧒', label: 'Bambini', opts: [{ v: 'yes', l: 'Benvenuti' }, { v: 'no', l: 'Solo adulti' }] },
+  ];
+  return (
+    <Card className="mt-6" title="Da sapere · regole della casa" action={<span className={cn('text-xs font-semibold', state === 'error' ? 'text-terracotta' : 'text-mist')}>{state === 'saving' ? 'Salvo…' : state === 'saved' ? '✓ Salvato' : state === 'error' ? 'Non salvato: riprova' : 'Si salva da solo'}</span>}>
+      <p className="mb-4 text-xs leading-relaxed text-mist">Gli ospiti le vedono nella pagina di ogni camera e nel riepilogo della prenotazione; il chatbot risponde con queste.</p>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {rows.map((row, i) => (
+          <motion.div key={row.k} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }} className="rounded-2xl border border-line bg-ivory p-3.5">
+            <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-navy">
+              <span aria-hidden="true">{row.icon}</span> {row.label}
+            </p>
+            <div role="radiogroup" aria-label={row.label} className="flex flex-wrap gap-1.5">
+              {row.opts.map((o) => {
+                const on = r[row.k] === o.v;
+                return (
+                  <button key={o.v} type="button" role="radio" aria-checked={on} onClick={() => !on && save({ ...r, [row.k]: o.v } as HouseRules)} className={cn('relative rounded-full px-3.5 py-2 text-xs font-semibold transition-colors', on ? 'text-ivory' : 'bg-white text-navy ring-1 ring-line hover:ring-navy/50')}>
+                    {on && <motion.span layoutId={`rule-${row.k}`} className="absolute inset-0 -z-0 rounded-full bg-navy" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
+                    <span className="relative">{o.l}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        ))}
+        <label className="rounded-2xl border border-line bg-ivory p-3.5">
+          <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-navy">
+            <span aria-hidden="true">🌙</span> Silenzio dalle
+          </span>
+          <span className="flex items-center gap-2">
+            <input type="time" step={1800} value={r.quietFrom} onChange={(e) => save({ ...r, quietFrom: e.target.value }, 650)} className="field max-w-[9rem] bg-white" aria-label="Silenzio dalle" />
+            {r.quietFrom && (
+              <button type="button" onClick={() => save({ ...r, quietFrom: '' })} className="text-xs font-semibold text-mist hover:text-terracotta">
+                Togli
+              </button>
+            )}
+          </span>
+        </label>
+        <label className="rounded-2xl border border-line bg-ivory p-3.5">
+          <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-navy">
+            <span aria-hidden="true">📝</span> Altro da sapere (facoltativo)
+          </span>
+          <input value={r.note} maxLength={300} onChange={(e) => save({ ...r, note: e.target.value }, 900)} placeholder="Es. Nessun ascensore per il primo piano" className="field bg-white" aria-label="Altro da sapere" />
+        </label>
+      </div>
+    </Card>
   );
 }

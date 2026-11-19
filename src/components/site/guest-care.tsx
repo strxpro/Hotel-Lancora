@@ -1,9 +1,10 @@
 'use client';
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import { CalendarRange, Check, CreditCard, Lock, MessageCircle, Send } from 'lucide-react';
-import { useI18n } from './providers';
+import { useI18n, useIsDesktop } from './providers';
+import { RangeCalendar } from './booking/calendar';
 import { CARE_T } from '@/lib/i18n/care-dict';
 import { plural } from '@/lib/i18n/config';
 import { addDays, diffDays, fmtDate, fmtDateTime, todayISO } from '@/lib/dates';
@@ -21,6 +22,8 @@ export type GuestCareProps = {
   card: { deadline: string; amount: number; cancelOnExpiry: boolean; expired: boolean } | null;
   cardDone: boolean;
   change: { kind: 'dates' | 'free_cancel'; by: 'hotel' | 'guest'; checkIn: string; checkOut: string; total: number; note: string; status: string; answer?: string; recent: boolean } | null;
+  /** nights of the guest's room already taken by others (the calendar shows them closed) */
+  busy?: string[];
 };
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -117,7 +120,7 @@ export function GuestCare(p: GuestCareProps) {
         </p>
       )}
 
-      {p.active && change?.status !== 'pending' && <DatesForm token={p.token} checkIn={p.checkIn} checkOut={p.checkOut} onDone={(text) => { setMsg({ ok: true, text }); router.refresh(); }} onError={(e) => setMsg({ ok: false, text: err(e) })} />}
+      {p.active && change?.status !== 'pending' && <DatesForm token={p.token} checkIn={p.checkIn} checkOut={p.checkOut} busy={p.busy} onDone={(text) => { setMsg({ ok: true, text }); router.refresh(); }} onError={(e) => setMsg({ ok: false, text: err(e) })} />}
 
       <Conversation token={p.token} thread={p.thread} hotelName={p.hotelName} onError={(e) => setMsg({ ok: false, text: err(e) })} />
 
@@ -132,8 +135,11 @@ export function GuestCare(p: GuestCareProps) {
   );
 }
 
-function DatesForm({ token, checkIn, checkOut, onDone, onError }: { token: string; checkIn: string; checkOut: string; onDone: (text: string) => void; onError: (e?: string) => void }) {
+function DatesForm({ token, checkIn, checkOut, busy = [], onDone, onError }: { token: string; checkIn: string; checkOut: string; busy?: string[]; onDone: (text: string) => void; onError: (e?: string) => void }) {
   const { locale, t } = useI18n();
+  const desktop = useIsDesktop();
+  const blocked = useMemo(() => new Set(busy), [busy]);
+  const day = (d: string) => fmtDate(d, locale, { weekday: 'short', day: 'numeric', month: 'short' });
   const c = CARE_T[locale];
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState(checkIn);
@@ -169,17 +175,19 @@ function DatesForm({ token, checkIn, checkOut, onDone, onError }: { token: strin
             });
           }}
         >
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="label">{t.search.arrival}</span>
-              <input type="date" className="field" required min={todayISO()} value={from} onChange={(e) => { setFrom(e.target.value); if (e.target.value && to <= e.target.value) setTo(addDays(e.target.value, Math.max(1, diffDays(checkIn, checkOut)))); }} />
-            </label>
-            <label className="block">
-              <span className="label">{t.search.departure}</span>
-              <input type="date" className="field" required min={from ? addDays(from, 1) : todayISO()} value={to} onChange={(e) => setTo(e.target.value)} />
-            </label>
+          {/* the same calendar as the booking: nights already taken are closed, the stay shows as a band */}
+          <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-line bg-white">
+            {([[t.search.arrival, from], [t.search.departure, to]] as const).map(([l, d], i) => (
+              <div key={l} className={cn('px-4 py-3', i === 1 && 'border-l border-line')}>
+                <p className="text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-mist">{l}</p>
+                <p className={cn('mt-0.5 text-[0.95rem] font-semibold', d ? 'text-navy' : 'text-mist')}>{d ? day(d) : '—'}</p>
+              </div>
+            ))}
           </div>
-          {nights > 0 && <p className="mt-2 text-xs text-mist">{plural(locale, nights, t.booking.nights)}</p>}
+          <div className="mt-3 rounded-2xl border border-line bg-white p-3 sm:p-4">
+            <RangeCalendar checkIn={from || null} checkOut={to || null} minDate={todayISO()} months={desktop ? 2 : 1} blockedNights={blocked} onChange={(ci, co) => { setFrom(ci ?? ''); setTo(co ?? ''); }} />
+          </div>
+          {nights > 0 && <p className="mt-2 text-xs text-mist">{plural(locale, nights, t.booking.nights)}{same ? '' : ` · ${c.askDates}`}</p>}
           <label className="mt-3 block">
             <span className="label">{c.note}</span>
             <textarea className="field" rows={2} maxLength={800} value={note} onChange={(e) => setNote(e.target.value)} />

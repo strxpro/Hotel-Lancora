@@ -6,6 +6,7 @@ import { addDays, fmtDate } from '@/lib/dates';
 import { localePath } from '@/lib/i18n/config';
 import { money, ospiti } from '@/lib/utils';
 import { publicPlaces } from '../places';
+import { houseRules, rulesForPrompt } from '@/lib/house-rules';
 import { amenityLabel } from '@/content/amenities';
 import { getDictionary } from '@/lib/i18n/dictionaries';
 import { localizeRoom } from '../rooms';
@@ -141,7 +142,12 @@ export function answerKB(db: DB, message: string, lang: Locale, today: string): 
   // services first (avoid "parcheggio disponibile?" being read as room availability)
   for (const [key, rx] of Object.entries(SERVICE_RX)) {
     if (!rx.test(n)) continue;
-    const s = db.settings.services.find((x) => x.key === key);
+    let s = db.settings.services.find((x) => x.key === key);
+    // pets: the house rules decide (Impostazioni → Arrivo, partenza e regole)
+    if (key === 'animali') {
+      const p = houseRules(db.settings).pets;
+      s = { key, label: 'Animali', status: p === 'no' ? 'non_disponibile' : 'confermato', note: p === 'request' ? 'su richiesta' : '' };
+    }
     const name = SERVICE_NAMES[key]![lang];
     if (s?.status === 'confermato') return reply(`service:${key}`, fillT(T.serviceYes[lang], { s: name, note: s.note }));
     if (s?.status === 'non_disponibile') return reply(`service:${key}`, fillT(T.serviceNo[lang], { s: name, note: s.note }));
@@ -226,7 +232,7 @@ export function buildSystemPrompt(db: DB, lang: Locale, today: string): string {
     const free = searchAvailability(db, { checkIn: d, checkOut: addDays(d, 1), adults: 1, children: 0 }).filter((r) => r.available);
     return `${d}: ${free.length} camere libere${free.length ? `, da € ${Math.min(...free.map((r) => r.quote.total))}` : ''}`;
   });
-  const services = db.settings.services.map((s) => `- ${s.label}: ${s.status === 'confermato' ? 'SÌ' : s.status === 'non_disponibile' ? 'NO' : 'NON CONFERMATO (non affermare né negare: rimanda alla reception)'}${s.note ? ` (${s.note})` : ''}`);
+  const services = db.settings.services.filter((s) => s.key !== 'animali').map((s) => `- ${s.label}: ${s.status === 'confermato' ? 'SÌ' : s.status === 'non_disponibile' ? 'NO' : 'NON CONFERMATO (non affermare né negare: rimanda alla reception)'}${s.note ? ` (${s.note})` : ''}`);
   return [
     `Sei l'assistente del sito di ${h.name}, hotel ${h.stars} stelle a ${h.city} (${h.province}), Sardegna. Oggi è ${today}.`,
     `LINGUA: rispondi ESCLUSIVAMENTE in ${LANG_NAME[lang]}, dall'inizio alla fine. I dati qui sotto sono in italiano: traducili, non mescolare mai le lingue (restano invariati solo nomi propri, telefono ed email).`,
@@ -236,6 +242,7 @@ export function buildSystemPrompt(db: DB, lang: Locale, today: string): string {
     `Contatti reception: ${h.phone} · ${h.email}. Indirizzo: ${h.addressVerified ? `${h.addressLine}, ${h.postalCode} ${h.city}` : 'da confermare con la reception'}.`,
     `Check-in ${h.checkInFrom}–${h.checkInTo}, check-out entro ${h.checkOutBy}${h.factsVerified ? '' : db.settings.demoMode ? ' (dati dimostrativi)' : ' (da confermare con la reception)'}.`,
     `Cancellazione: ${cancelText('it', db.settings.payments)} ${db.settings.payments.cancellationPolicy}`,
+    `Regole della casa: ${rulesForPrompt(houseRules(db.settings))}.`,
     ...payInfo(db),
     'CAMERE:',
     ...rooms,

@@ -210,3 +210,25 @@ export async function saveStayTimesAction(raw: unknown) {
     });
   });
 }
+
+/** Impostazioni → Arrivo e partenza → Da sapere: the house rules (saved by themselves). Pets also set the "Animali" service the chatbot reads. */
+export async function saveHouseRulesAction(raw: unknown) {
+  return act('settings.edit', (u) => {
+    const r = z
+      .object({
+        pets: z.enum(['no', 'yes', 'request']),
+        smoking: z.enum(['no', 'outside']),
+        parties: z.enum(['no', 'yes']),
+        children: z.enum(['yes', 'no']),
+        quietFrom: z.union([z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), z.literal('')]),
+        note: z.string().trim().max(300),
+      })
+      .parse(raw);
+    mutate((db) => {
+      db.settings.hotel.rules = r;
+      const svc = db.settings.services.find((x) => x.key === 'animali');
+      if (svc) Object.assign(svc, { status: r.pets === 'no' ? 'non_disponibile' : 'confermato', note: r.pets === 'request' ? 'su richiesta' : '' });
+      audit(db, u.name, 'update', 'settings', null, `Da sapere: animali ${r.pets === 'no' ? 'non ammessi' : r.pets === 'yes' ? 'ammessi' : 'su richiesta'}, fumo ${r.smoking === 'no' ? 'vietato ovunque' : 'solo fuori'}, feste ${r.parties === 'no' ? 'no' : 'su richiesta'}, bambini ${r.children === 'yes' ? 'sì' : 'no'}`);
+    });
+  });
+}

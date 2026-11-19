@@ -3,7 +3,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft, Banknote, BedDouble, CalendarDays, Expand, Layers, Maximize2, Users, X } from 'lucide-react';
+import { ArrowLeft, Baby, Banknote, BedDouble, CalendarDays, Cigarette, Dog, Expand, Info, Layers, Maximize2, Moon, PartyPopper, Users, X } from 'lucide-react';
+import type { RuleIcon, RuleLine } from '@/lib/house-rules';
 import { PricePair } from '../price-pair';
 import { TaxLine } from '../booking/tax-line';
 import type { TaxQuote } from '@/lib/tourist-tax';
@@ -53,7 +54,7 @@ type QuoteResponse = { available: boolean; reason: 'capacity' | 'occupied' | nul
 
 const GLANCE = { h: { opacity: 0, y: 10, scale: 0.96 }, v: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring' as const, stiffness: 380, damping: 28 } } };
 
-export function RoomDetail({ room, occupied, nightly = {}, similar, today, initialQuery, policies, reviews = [] }: { room: RoomDetailData; occupied: string[]; nightly?: Record<string, number>; similar: RoomCardData[]; today: string; initialQuery: StayQuery; policies: { checkInFrom: string; checkInTo: string; checkOutBy: string; cancellation: string }; reviews?: ReviewView[] }) {
+export function RoomDetail({ room, occupied, nightly = {}, similar, today, initialQuery, policies, reviews = [] }: { room: RoomDetailData; occupied: string[]; nightly?: Record<string, number>; similar: RoomCardData[]; today: string; initialQuery: StayQuery; policies: { checkInFrom: string; checkInTo: string; checkOutBy: string; cancellation: string; rules?: RuleLine[] }; reviews?: ReviewView[] }) {
   const { t, locale, href } = useI18n();
   const P = PRICE_T[locale];
   const router = useRouter();
@@ -109,7 +110,8 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
   const facts = [
     { icon: Users, label: t.room.guests, value: plural(locale, room.maxGuests, t.rooms.upTo) },
     { icon: BedDouble, label: t.room.beds, value: room.beds },
-    { icon: Maximize2, label: t.room.size, value: room.size ? `${room.size} m²` : '—' },
+    // no size written: no empty "—" chip
+    ...(room.size ? [{ icon: Maximize2, label: t.room.size, value: `${room.size} m²` }] : []),
     { icon: Layers, label: t.room.floor, value: t.floor[room.floor] },
   ];
 
@@ -174,7 +176,7 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
                 ))}
               </div>
             </Reveal>
-            <Reveal as="ul" stagger={0.06} className="mt-14 grid grid-cols-2 gap-px bg-line sm:grid-cols-4">
+            <Reveal as="ul" stagger={0.06} className={cn('mt-14 grid grid-cols-2 gap-px bg-line', facts.length === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
               {facts.map((f) => (
                 <li key={f.label} className="bg-ivory p-5">
                   <f.icon className="h-5 w-5 text-gold-2" strokeWidth={1.3} />
@@ -212,6 +214,16 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
                   <dd className="leading-relaxed text-charcoal/80">{policies.cancellation}</dd>
                 </div>
               </dl>
+              {policies.rules && policies.rules.length > 0 && (
+                <ul className="mt-8 grid gap-2.5 sm:grid-cols-2" data-testid="house-rules">
+                  {policies.rules.map((l) => (
+                    <li key={l.icon + l.text} className="flex items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3 text-[0.9rem] text-navy">
+                      <RuleIconView icon={l.icon} ok={l.ok} />
+                      {l.text}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Reveal>
             <div className="mt-16">
               <RoomReviews reviews={reviews} roomId={room.id} roomName={room.title} />
@@ -386,5 +398,18 @@ function MobileBookBar({ hidden, price, caption, cta, href, onCheck }: { hidden:
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+const RULE_ICON: Record<RuleIcon, typeof Dog> = { pets: Dog, smoke: Cigarette, party: PartyPopper, kids: Baby, quiet: Moon, note: Info };
+
+/** A rule's icon; not allowed = the icon crossed out (like the signs at the hotel). */
+function RuleIconView({ icon, ok }: { icon: RuleIcon; ok: boolean }) {
+  const I = RULE_ICON[icon];
+  return (
+    <span className={cn('relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full', ok ? 'bg-sand-2 text-gold-2' : 'bg-terracotta/10 text-terracotta')}>
+      <I className="h-[1.05rem] w-[1.05rem]" strokeWidth={1.6} />
+      {!ok && <span className="absolute h-[1.5px] w-6 rotate-45 rounded-full bg-terracotta" aria-hidden="true" />}
+    </span>
   );
 }

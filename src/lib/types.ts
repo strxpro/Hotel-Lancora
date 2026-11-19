@@ -332,6 +332,8 @@ export interface Settings {
     checkInFrom: string;
     checkInTo: string;
     checkOutBy: string;
+    /** "Da sapere": pets, smoking, parties… (Impostazioni → Arrivo e partenza); absent = defaults in lib/house-rules.ts */
+    rules?: import('./house-rules').HouseRules;
     factsVerified: boolean;
     googleReviewUrl: string;
   };

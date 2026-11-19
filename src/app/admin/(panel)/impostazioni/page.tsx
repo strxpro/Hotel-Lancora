@@ -9,7 +9,8 @@ import { transportLabel } from '@/server/email/transport';
 import Link from 'next/link';
 import { Clock, Hotel, MessageCircleQuestion, Plug, ShieldCheck, Umbrella } from 'lucide-react';
 import { PageHeader } from '@/components/admin/ui';
-import { AccountCard, AuditCard, FaqCard, FloorsCard, GoLiveCard, HotelForm, ServicesCard, StayTimesCard } from '@/components/admin/settings';
+import { AccountCard, AuditCard, FaqCard, FloorsCard, GoLiveCard, HotelForm, HouseRulesCard, ServicesCard, StayTimesCard } from '@/components/admin/settings';
+import { houseRules } from '@/lib/house-rules';
 import { PlacesEditor } from '@/components/admin/places-editor';
 import { placeList } from '@/server/places';
 import { cn } from '@/lib/utils';
@@ -25,7 +26,7 @@ export const metadata = { title: 'Impostazioni' };
 const TABS = [
   { id: 'collegamenti', label: 'Collegamenti', icon: Plug },
   { id: 'struttura', label: 'La struttura', icon: Hotel },
-  { id: 'orari', label: 'Arrivo e partenza', icon: Clock },
+  { id: 'orari', label: 'Arrivo, partenza e regole', icon: Clock },
   { id: 'dintorni', label: 'Spiagge e dintorni', icon: Umbrella },
   { id: 'servizi', label: 'Servizi e domande', icon: MessageCircleQuestion },
   { id: 'sicurezza', label: 'Sicurezza', icon: ShieldCheck },
@@ -88,7 +89,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </div>
         </div>
       )}
-      {tab === 'orari' && <StayTimesCard hotel={db.settings.hotel} tax={db.settings.pricing?.touristTax ?? null} />}
+      {tab === 'orari' && (
+        <>
+          <StayTimesCard hotel={db.settings.hotel} tax={db.settings.pricing?.touristTax ?? null} />
+          <HouseRulesCard initial={houseRules(db.settings)} />
+        </>
+      )}
       {tab === 'dintorni' && <PlacesEditor initial={placeList(db)} custom={Boolean(db.settings.places?.length)} />}
       {tab === 'servizi' && (
         <div className="grid gap-6 [&>*]:min-w-0 xl:grid-cols-2">

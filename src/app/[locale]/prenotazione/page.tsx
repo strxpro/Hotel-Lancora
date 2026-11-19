@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { isLocale } from '@/lib/i18n/config';
+import { houseRules, ruleLines } from '@/lib/house-rules';
 import { getDictionary } from '@/lib/i18n/dictionaries';
 import type { Locale } from '@/lib/types';
 import { todayISO } from '@/lib/dates';
@@ -50,7 +51,7 @@ export default async function BookingPage({ params, searchParams }: Props) {
             stripeKey={publishableKey()}
             cash={{ enabled: p.allowCashAtHotel, percent: p.cashDiscountPercent, guarantee: p.cardGuarantee === true && cardPaymentsReady(db) }}
             online={(p.allowOnline !== false || !p.allowCashAtHotel) && (cardPossible || !p.allowCashAtHotel)}
-            times={{ checkInFrom: db.settings.hotel.checkInFrom, checkInTo: db.settings.hotel.checkInTo, checkOutBy: db.settings.hotel.checkOutBy }}
+            times={{ checkInFrom: db.settings.hotel.checkInFrom, checkInTo: db.settings.hotel.checkInTo, checkOutBy: db.settings.hotel.checkOutBy, rules: ruleLines(houseRules(db.settings), locale) }}
           />
         </div>
       </div>

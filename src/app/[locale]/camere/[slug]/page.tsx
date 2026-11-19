@@ -9,6 +9,7 @@ import { isLocale } from '@/lib/i18n/config';
 import type { Locale } from '@/lib/types';
 import { addDays, todayISO } from '@/lib/dates';
 import { occupiedNights } from '@/lib/availability';
+import { houseRules, ruleLines } from '@/lib/house-rules';
 import { readDb } from '@/server/db/store';
 import { findPublicRoom, publicRooms } from '@/server/rooms';
 import { toCard } from '@/server/public-data';
@@ -52,7 +53,7 @@ export default async function RoomPage({ params, searchParams }: Props) {
       today={today}
       initialQuery={q}
       reviews={publicReviews(db, locale, room.id)}
-      policies={{ checkInFrom: h.checkInFrom, checkInTo: h.checkInTo, checkOutBy: h.checkOutBy, cancellation: [cancelText(locale, db.settings.payments), db.settings.payments.cancellationPolicy].filter(Boolean).join(' ') }}
+      policies={{ checkInFrom: h.checkInFrom, checkInTo: h.checkInTo, checkOutBy: h.checkOutBy, cancellation: [cancelText(locale, db.settings.payments), db.settings.payments.cancellationPolicy].filter(Boolean).join(' '), rules: ruleLines(houseRules(db.settings), locale) }}
     />
   );
 }
