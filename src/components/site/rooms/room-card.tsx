@@ -21,7 +21,7 @@ import { Stars } from '../reviews/reviews-ui';
  * Room box: photo with mask reveal, key facts, amenities, price (per night or whole stay),
  * availability and the two actions. All boxes in a row share the same height.
  */
-export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 0, variant = 'grid', tall = false, top = false }: { top?: boolean; room: RoomCardData; index: number; delay?: number; query?: StayQuery | null; result?: { total: number; nights: number; averageNight: number; available: boolean; singleUse?: number; cashPercent?: number } | null; cashPercent?: number; variant?: 'grid' | 'masonry'; tall?: boolean }) {
+export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 0, variant = 'grid', tall = false, top = false }: { top?: boolean; room: RoomCardData; index: number; delay?: number; query?: StayQuery | null; result?: { total: number; nights: number; averageNight: number; available: boolean; singleUse?: number; cashPercent?: number } | null; cashPercent?: number; variant?: 'grid' | 'masonry' | 'list'; tall?: boolean }) {
   const { t, locale, href } = useI18n();
   const router = useRouter();
   const card = useRef<HTMLElement>(null);
@@ -34,6 +34,8 @@ export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 
   const pct = result?.cashPercent ?? room.cashPercent ?? cashPercent;
   const cash = (n: number) => Math.round(n * (1 - pct / 100) * 100) / 100;
   const masonry = variant === 'masonry';
+  // one under the other: the photo on the left, everything else on the right (stacked on phones)
+  const list = variant === 'list';
   const rates = RATES_T[locale];
 
   useGSAP(
@@ -59,13 +61,13 @@ export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 
       ref={card}
       data-reveal
       aria-labelledby={`room-${room.id}`}
-      className="group/card relative flex h-full flex-col overflow-hidden rounded-[1.75rem] border border-line bg-white transition-[box-shadow,border-color] duration-700 ease-[var(--ease-lux)] hover:border-sand hover:shadow-[0_40px_80px_-48px_rgba(16,40,61,0.55)]"
+      className={cn('group/card relative flex h-full flex-col overflow-hidden rounded-[1.75rem] border border-line bg-white transition-[box-shadow,border-color] duration-700 ease-[var(--ease-lux)] hover:border-sand hover:shadow-[0_40px_80px_-48px_rgba(16,40,61,0.55)]', list && 'md:flex-row')}
     >
-      <Link href={detailHref} onClick={openDetail} aria-hidden="true" tabIndex={-1} className="relative block overflow-hidden">
-        <div ref={mask} className={cn('relative overflow-hidden bg-sand', masonry ? (tall ? 'aspect-[4/5]' : 'aspect-[5/4]') : 'aspect-[4/3]')}>
+      <Link href={detailHref} onClick={openDetail} aria-hidden="true" tabIndex={-1} className={cn('relative block overflow-hidden', list && 'md:w-[44%] md:shrink-0 lg:w-[40%]')}>
+        <div ref={mask} className={cn('relative overflow-hidden bg-sand', masonry ? (tall ? 'aspect-[4/5]' : 'aspect-[5/4]') : list ? 'aspect-[4/3] md:aspect-auto md:h-full md:min-h-[19rem]' : 'aspect-[4/3]')}>
           <div ref={imgRef} className="absolute inset-0">
             <div className="absolute inset-0 transition-transform duration-[1.4s] ease-[var(--ease-lux)] group-hover/card:scale-[1.045]">
-              {room.photo && <Image src={room.photo.src} alt={room.photo.alt} fill sizes="(min-width:1280px) 31vw, (min-width:640px) 46vw, 100vw" className="object-cover" quality={75} />}
+              {room.photo && <Image src={room.photo.src} alt={room.photo.alt} fill sizes={list ? '(min-width:1024px) 40vw, (min-width:768px) 44vw, 100vw' : '(min-width:1280px) 31vw, (min-width:640px) 46vw, 100vw'} className="object-cover" quality={75} />}
             </div>
           </div>
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(10,28,43,0.28)_0%,transparent_30%,transparent_62%,rgba(10,28,43,0.42)_100%)] opacity-80 transition-opacity duration-700 group-hover/card:opacity-100" />
@@ -94,7 +96,7 @@ export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 
         </div>
       </Link>
 
-      <div className={cn('flex flex-1 flex-col pt-6 sm:px-6 sm:pb-6', masonry ? 'px-3.5 pb-3.5 pt-4' : 'px-5 pb-5')}>
+      <div className={cn('flex min-w-0 flex-1 flex-col pt-6 sm:px-6 sm:pb-6', masonry ? 'px-3.5 pb-3.5 pt-4' : 'px-5 pb-5', list && 'md:px-8 md:pb-7 md:pt-7')}>
         <p className="eyebrow text-gold-2">{t.roomTypes[room.type]}</p>
         <h3 id={`room-${room.id}`} className={cn('serif mt-2.5 leading-[1.05] text-navy', masonry ? 'text-[1.35rem] sm:text-[1.95rem]' : 'text-[1.95rem]')}>
           <Link href={detailHref} onClick={openDetail} className="bg-[linear-gradient(currentColor,currentColor)] bg-[length:0%_1px] bg-[position:0_100%] bg-no-repeat transition-[background-size] duration-700 ease-[var(--ease-lux)] hover:bg-[length:100%_1px]">
@@ -111,9 +113,9 @@ export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 
         <p className={cn('mt-1.5 text-[0.8rem] text-mist', masonry && 'hidden sm:block')}>
           {plural(locale, room.maxGuests, t.rooms.upTo)} · {room.beds}
         </p>
-        <p className={cn('mt-4 line-clamp-2 text-[0.93rem] leading-relaxed text-charcoal/80', masonry && 'hidden sm:block')}>{room.short}</p>
+        <p className={cn('mt-4 text-[0.93rem] leading-relaxed text-charcoal/80', list ? 'line-clamp-3' : 'line-clamp-2', masonry && 'hidden sm:block')}>{room.short}</p>
         <ul className={cn('mt-5 flex flex-wrap gap-x-4 gap-y-2 text-[0.75rem] text-charcoal/75', masonry && 'hidden sm:flex')}>
-          {room.amenities.slice(0, 4).map((a) => (
+          {room.amenities.slice(0, list ? 6 : 4).map((a) => (
             <li key={a} className="flex items-center gap-1.5">
               <AmenityIcon name={a} className="h-3.5 w-3.5 text-gold-2" />
               {amenityLabel(a, locale)}
@@ -147,7 +149,7 @@ export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 
               <ArrowUpRight className="h-4 w-4 transition-transform duration-500 group-hover/card:-translate-y-0.5 group-hover/card:translate-x-0.5" />
             </Link>
           </div>
-          <div className={cn('mt-4 grid gap-2', masonry ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2')}>
+          <div className={cn('mt-4 grid gap-2', masonry ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2', list && 'md:ml-auto md:w-[22rem]')}>
             <Link href={detailHref} onClick={openDetail} className={cn(masonry && 'hidden sm:inline-flex', 'btn btn-line h-11 min-h-0 whitespace-nowrap px-2 text-[0.62rem] tracking-[0.12em] text-navy')}>
               {t.rooms.discover}
             </Link>

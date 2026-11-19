@@ -6,7 +6,7 @@ import type { Locale } from '@/lib/types';
 import { readDb } from '@/server/db/store';
 import { alternates } from '@/server/seo';
 import { MEDIA } from '@/content/media';
-import { EXPERIENCES } from '@/content/experiences';
+import { publicPlaces } from '@/server/places';
 import { ImageReveal, Reveal, SplitHeading } from '@/components/site/motion-kit';
 import { AreaMap } from '@/components/site/place-map';
 import { cn } from '@/lib/utils';
@@ -25,7 +25,11 @@ export default async function ExperiencesPage({ params }: Props) {
   const { locale: raw } = await params;
   const locale = (isLocale(raw) ? raw : 'it') as Locale;
   const t = getDictionary(locale);
-  const { hotel } = readDb().settings;
+  const db = readDb();
+  const { hotel } = db.settings;
+  const places = publicPlaces(db);
+  // photo credits of the site's original pictures (the owner's own photos need none)
+  const credit = (src: string) => Object.values(MEDIA).find((m) => m.src === src);
   return (
     <>
       <section className="bg-ivory p-2 sm:p-3">
@@ -44,8 +48,9 @@ export default async function ExperiencesPage({ params }: Props) {
 
       <div className="bg-ivory py-24 md:py-36">
         <div className="container-x space-y-28 md:space-y-44">
-          {EXPERIENCES.map((x, i) => {
-            const m = MEDIA[x.image];
+          {places.map((x, i) => {
+            const m = x.photo;
+            const c = credit(m.src);
             const flip = i % 2 === 1;
             return (
               <article key={x.id} id={x.id} className="grid items-center gap-10 md:grid-cols-12">
@@ -53,9 +58,11 @@ export default async function ExperiencesPage({ params }: Props) {
                   <ImageReveal className={cn('bg-sand', i % 3 === 0 ? 'aspect-[16/11]' : 'aspect-[4/3]')} direction={flip ? 'right' : 'left'} parallax={5}>
                     <Image src={m.src} alt={m.alt} fill sizes="(min-width:768px) 58vw, 100vw" className="object-cover" />
                   </ImageReveal>
-                  <p className="mt-3 text-[0.68rem] text-mist">
-                    Foto: {m.credit} · {m.license}
-                  </p>
+                  {c && (
+                    <p className="mt-3 text-[0.68rem] text-mist">
+                      Foto: {c.credit} · {c.license}
+                    </p>
+                  )}
                 </div>
                 <Reveal className={cn('md:col-span-4', flip ? 'md:order-1 md:col-start-1' : 'md:col-start-9')}>
                   <p className="eyebrow text-gold-2">

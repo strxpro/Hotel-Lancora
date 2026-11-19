@@ -1,8 +1,8 @@
 import 'server-only';
-import type { DB, FloorKey, Locale, Photo, RatePeriod, Room, RoomStatus, RoomText, RoomType } from '@/lib/types';
+import type { Block, DB, FloorKey, Locale, Photo, RatePeriod, Room, RoomStatus, RoomText, RoomType } from '@/lib/types';
 import { LOCALES } from '@/lib/types';
 import { isBookingActive, isPubliclyBookable } from '@/lib/availability';
-import { addDays, fmtDate, isValidISODate, rangesOverlap, todayISO } from '@/lib/dates';
+import { addDays, diffDays, eachNight, fmtDate, isValidISODate, rangesOverlap, todayISO } from '@/lib/dates';
 import { carveRooms } from '@/lib/period-prices';
 import { slugify } from '@/lib/utils';
 import { bedsCountOf, bedsText, parseBeds, type BedConfig } from '@/lib/beds';
@@ -347,5 +347,63 @@ export function saveTranslation(roomId: string, lang: Exclude<Locale, 'it'>, tex
     };
     r.updatedAt = new Date().toISOString();
     audit(db, actor, opts.approve ? 'translation_publish' : 'translation_draft', 'room', r.id, `Camera ${r.number} · ${lang.toUpperCase()}`);
+  });
+}
+
+/**
+ * Vista Booking → "Aperta / Chiusa": closing puts a block on the free nights of the range (nights
+ * with guests stay as they are); opening takes the manual blocks off those nights (a block that
+ * runs past the range keeps its other part). Nights closed by a portal's calendar stay closed:
+ * they come back with the next sync, so they are opened on the portal.
+ */
+export function setRoomsOpen(input: { roomIds: string[]; from: string; to: string; open: boolean }, actor: string): { changed: number; portal: number } {
+  if (!isValidISODate(input.from) || !isValidISODate(input.to) || input.to <= input.from) throw new RoomError('Intervallo non valido.');
+  if (diffDays(input.from, input.to) > 400) throw new RoomError('Al massimo un anno alla volta.');
+  return mutate((db) => {
+    const ids = [...new Set(input.roomIds)].filter((id) => db.rooms.some((r) => r.id === id));
+    if (!ids.length) throw new RoomError('Scegli almeno una camera.');
+    let changed = 0;
+    let portal = 0;
+    const now = new Date().toISOString();
+    for (const roomId of ids) {
+      if (input.open) {
+        const keep: Block[] = [];
+        for (const k of db.blocks) {
+          if (k.roomId !== roomId || !rangesOverlap(input.from, input.to, k.from, k.to)) {
+            keep.push(k);
+            continue;
+          }
+          if (k.source) {
+            portal += 1;
+            keep.push(k);
+            continue;
+          }
+          changed += 1;
+          if (k.from < input.from) keep.push({ ...k, to: input.from });
+          if (k.to > input.to) keep.push({ ...k, id: newId('blk-'), from: input.to });
+        }
+        db.blocks = keep;
+      } else {
+        // the free nights of the range, in runs, become blocks
+        let start: string | null = null;
+        const flush = (end: string) => {
+          if (start && end > start) {
+            db.blocks.push({ id: newId('blk-'), roomId, from: start, to: end, reason: 'Chiusa (calendario)', createdBy: actor, createdAt: now });
+            changed += 1;
+          }
+          start = null;
+        };
+        for (const d of eachNight(input.from, input.to)) {
+          const next = addDays(d, 1);
+          const busy = db.bookings.some((b) => b.roomId === roomId && isBookingActive(b) && rangesOverlap(d, next, b.checkIn, b.checkOut)) || db.blocks.some((b) => b.roomId === roomId && rangesOverlap(d, next, b.from, b.to));
+          if (busy) flush(d);
+          else if (!start) start = d;
+        }
+        flush(input.to);
+      }
+    }
+    const rooms = ids.map((id) => db.rooms.find((x) => x.id === id)!.number).join(', ');
+    audit(db, actor, input.open ? 'unblock' : 'block', 'room', ids.length === 1 ? ids[0]! : null, `${ids.length === 1 ? 'Camera' : 'Camere'} ${rooms} ${input.open ? 'aperta' : 'chiusa'} ${periodLabel(input.from, input.to)}`);
+    return { changed, portal };
   });
 }

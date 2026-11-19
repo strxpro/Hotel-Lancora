@@ -377,6 +377,8 @@ export interface Settings {
     updatedAt: string | null;
     /** demo only: the onboarding was simulated (no Stripe platform key) */
     simulated: boolean;
+    /** the keys on the site are the hotel's own Stripe account: payments land there directly (no connected account) */
+    direct?: boolean;
     /** every card payment goes on to the hotel's debit card at once (Stripe Instant Payouts, with its cost) */
     autoInstant?: boolean;
     businessName: string | null;
@@ -390,6 +392,8 @@ export interface Settings {
   /** amenities the owner added himself in the room wizard, shared by every room */
   customAmenities: { key: string; label: string; labels?: Partial<Record<Locale, string>> }[];
   faq: { id: string; question: string; answer: string; keywords: string[] }[];
+  /** beaches and places around the hotel as the owner edited them (Impostazioni → Spiagge e dintorni); absent = the site's originals */
+  places?: import('./places').PlaceEdit[];
   demoMode: boolean;
   /** the owner's first set-up and the times of the Telegram reports */
   panel?: PanelPrefs;

@@ -5,7 +5,7 @@ import { mutate, readDb } from '@/server/db/store';
 import { audit } from '@/server/events';
 import { appUrl } from '@/server/email/templates';
 import { requestOrigin } from '@/server/security';
-import { accountGone, connectDashboardLink, connectOnboardingLink, createConnectAccount, retrieveConnectStatus, stripeMode, updatePayoutSchedule, type ConnectStatus } from '@/server/payments/stripe';
+import { accountGone, connectDashboardLink, connectOnboardingLink, createConnectAccount, hotelOwnStripe, platformReady, retrieveConnectStatus, retrieveOwnStatus, stripeMode, updateOwnPayoutSchedule, updatePayoutSchedule, type ConnectStatus } from '@/server/payments/stripe';
 import { InstantError, instantView, sendInstant, type InstantView } from '@/server/payments/instant';
 import { AuthError, requireUser } from '@/server/auth/guard';
 import { money } from '@/lib/utils';
@@ -41,6 +41,10 @@ function saveStatus(s: ConnectStatus) {
 export async function startStripeConnectAction() {
   return act('payments.manage', async (u) => {
     if (stripeMode() === 'off') throw new UserError('Per collegare un conto reale serve la chiave Stripe della piattaforma (STRIPE_SECRET_KEY). In demo puoi usare “Simula collegamento”.');
+    // the hotel's own Stripe is already on the site: nothing to create, only its page to open
+    if (hotelOwnStripe()) return { url: 'https://dashboard.stripe.com/' };
+    // Stripe refuses new hotel accounts until the site's own account is activated: say it before trying
+    if (!(await platformReady())) throw new UserError('I pagamenti con carta non sono ancora pronti dal lato del sito: l’assistenza tecnica sta completando l’attivazione su Stripe. Appena è fatta, questo pulsante funziona.');
     const db = readDb();
     let id = db.settings.stripeConnect.simulated ? null : db.settings.stripeConnect.accountId;
     // an account made with the test keys does not exist for the real ones: a new one, real
@@ -70,6 +74,11 @@ export async function startStripeConnectAction() {
 
 export async function refreshStripeConnectAction() {
   return act('payments.manage', async () => {
+    if (hotelOwnStripe()) {
+      const s = await stripeCall(() => retrieveOwnStatus());
+      mutate((db) => Object.assign(db.settings.stripeConnect, { ...s, accountId: null, simulated: false, direct: true, updatedAt: new Date().toISOString() }));
+      return s;
+    }
     const c = readDb().settings.stripeConnect;
     if (!c.accountId) throw new UserError('Nessun conto Stripe collegato.');
     if (c.simulated) return c;
@@ -82,6 +91,7 @@ export async function refreshStripeConnectAction() {
 
 export async function stripeDashboardAction() {
   return act('payments.manage', async () => {
+    if (hotelOwnStripe()) return { url: 'https://dashboard.stripe.com/' };
     const c = readDb().settings.stripeConnect;
     if (!c.accountId || c.simulated) throw new UserError('Disponibile dopo aver collegato un conto Stripe reale.');
     const accountId = c.accountId;
@@ -99,8 +109,11 @@ export async function savePayoutScheduleAction(raw: unknown) {
   return act('payments.manage', async (u) => {
     const s = Schedule.parse(raw);
     const c = readDb().settings.stripeConnect;
-    if (!c.accountId) throw new UserError('Collega prima un conto Stripe.');
-    if (!c.simulated) {
+    if (hotelOwnStripe()) {
+      const st = await stripeCall(() => updateOwnPayoutSchedule(s));
+      mutate((db) => Object.assign(db.settings.stripeConnect, { ...st, accountId: null, direct: true, updatedAt: new Date().toISOString() }));
+    } else if (!c.accountId) throw new UserError('Collega prima un conto Stripe.');
+    else if (!c.simulated) {
       const accountId = c.accountId;
       saveStatus(await stripeCall(() => updatePayoutSchedule(accountId, s)));
     } else {

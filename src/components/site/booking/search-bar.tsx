@@ -97,7 +97,7 @@ export function SearchBar({
           </motion.span>
         ) : (
           <motion.span key="c" className="flex items-center gap-2.5" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -14, opacity: 0 }}>
-            <Search className="h-4 w-4" />
+            <Search className="h-4 w-4 text-gold" />
             {t.search.cta}
           </motion.span>
         )}
@@ -115,14 +115,14 @@ export function SearchBar({
   /* ---------- phone: pill (dates · guests) + explicit "Cerca", opening a bottom sheet ---------- */
   const mobileUi = (
     <div ref={mobileRef} className={cn('w-full md:hidden', className)}>
-      <div className={cn('flex w-full items-center gap-1.5 rounded-full p-1.5 transition-[background-color,box-shadow] duration-500', glass ? 'bg-ivory/[0.97] shadow-[0_18px_50px_-18px_rgba(10,28,43,0.6)] ring-1 ring-white/60' : 'border border-line bg-white shadow-[0_14px_40px_-24px_rgba(16,40,61,0.5)]')}>
+      <div className={cn('flex w-full items-center gap-1.5 rounded-full p-1.5 transition-[background-color,box-shadow] duration-500', glass ? 'bg-white shadow-[0_22px_60px_-18px_rgba(10,28,43,0.75)] ring-2 ring-gold/45' : 'border border-gold/35 bg-white shadow-[0_14px_40px_-24px_rgba(16,40,61,0.5)]')}>
         <button type="button" onClick={() => setPanel('mobile')} aria-haspopup="dialog" className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full py-1 pl-1.5 pr-2 text-left transition-colors active:bg-sand-2">
-          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-navy/[0.07] text-navy">
+          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold-2">
             <CalendarDays className="h-[1.1rem] w-[1.1rem]" strokeWidth={1.7} />
             {pulse}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[0.58rem] font-semibold uppercase tracking-[0.2em] text-mist">
+            <span className="block text-[0.58rem] font-semibold uppercase tracking-[0.2em] text-navy/60">
               {t.search.when} · {t.search.who}
             </span>
             <span className={cn('block truncate text-[0.9rem]', hasDates ? 'text-navy' : 'text-navy/70')}>
@@ -131,8 +131,9 @@ export function SearchBar({
           </span>
           <ChevronDown className="h-4 w-4 shrink-0 text-mist" />
         </button>
-        <button type="button" onClick={submit} disabled={loading} aria-label={t.search.go} title={t.search.go} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-navy text-ivory shadow-[0_10px_24px_-12px_rgba(16,40,61,0.8)] transition-transform active:scale-90">
-          {loading ? spinner : <Search className="h-[18px] w-[18px]" />}
+        <button type="button" onClick={submit} disabled={loading} aria-label={t.search.go} title={t.search.go} className="flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-full bg-navy px-4 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-ivory shadow-[0_10px_24px_-12px_rgba(16,40,61,0.8)] transition-transform active:scale-95">
+          {loading ? spinner : <Search className="h-[17px] w-[17px] text-gold" />}
+          <span className="max-[359px]:hidden">{t.search.go}</span>
         </button>
       </div>
       <Popover open={panel === 'mobile' && !desktop} onClose={close} anchor={mobileRef} label={t.search.cta} closeLabel={t.common.close}>
@@ -153,11 +154,11 @@ export function SearchBar({
     cn(
       'group relative flex h-full min-w-0 flex-1 items-center gap-3 rounded-full px-3 text-left transition-[background-color,box-shadow,min-height] duration-300 xl:px-4',
       docked ? 'min-h-[3.25rem]' : 'min-h-[3.9rem]',
-      active ? 'bg-white shadow-[0_8px_24px_-14px_rgba(16,40,61,0.45)] ring-1 ring-line' : 'hover:bg-white/70',
+      active ? 'bg-ivory shadow-[0_8px_24px_-14px_rgba(16,40,61,0.45)] ring-1 ring-gold/40' : 'hover:bg-ivory',
     );
-  const chip = 'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-navy/[0.06] text-navy transition-colors duration-300 group-hover:bg-navy group-hover:text-ivory';
-  const label = 'block text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-mist';
-  const val = (has: boolean) => cn('block truncate text-[0.98rem]', has ? 'text-navy' : 'text-navy/55');
+  const chip = 'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold-2 transition-colors duration-300 group-hover:bg-navy group-hover:text-gold';
+  const label = 'block text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-navy/60';
+  const val = (has: boolean) => cn('block truncate text-[1rem]', has ? 'font-medium text-navy' : 'text-navy/60');
   const divider = <span className="my-auto h-8 w-px shrink-0 bg-line" aria-hidden="true" />;
 
   return (
@@ -169,9 +170,9 @@ export function SearchBar({
           'relative hidden w-full items-stretch gap-1 rounded-full p-1.5 transition-[background-color,box-shadow,border-color] duration-700 ease-[var(--ease-lux)] md:flex',
           glass
             ? docked
-              ? 'border border-line bg-ivory/[0.97] shadow-[0_30px_70px_-30px_rgba(10,28,43,0.55)]'
-              : 'border border-white/60 bg-ivory/[0.96] shadow-[0_30px_80px_-40px_rgba(10,28,43,0.6)]'
-            : 'border border-line bg-white',
+              ? 'border border-gold/40 bg-white shadow-[0_30px_70px_-26px_rgba(10,28,43,0.65)]'
+              : 'border-2 border-gold/45 bg-white shadow-[0_40px_100px_-34px_rgba(10,28,43,0.85)] ring-[6px] ring-white/20'
+            : 'border border-gold/35 bg-white shadow-[0_18px_50px_-30px_rgba(16,40,61,0.45)]',
           className,
         )}
       >

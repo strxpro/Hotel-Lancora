@@ -20,10 +20,11 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
       <PlanningBoard
         rooms={roomOptions(db)}
         bookings={db.bookings.map((b) => bookingRow(db, b, now))}
-        blocks={db.blocks.map((k) => ({ id: k.id, roomId: k.roomId, from: k.from, to: k.to, reason: k.reason }))}
+        blocks={db.blocks.map((k) => ({ id: k.id, roomId: k.roomId, from: k.from, to: k.to, reason: k.reason, ...(k.source ? { source: k.source } : {}) }))}
+        periods={db.ratePeriods}
         today={today}
         initialMonth={month}
-        initialView={sp.view === 'calendario' ? 'calendario' : 'planning'}
+        initialView={sp.view === 'calendario' ? 'calendario' : sp.view === 'booking' ? 'booking' : 'planning'}
         openBlock={sp.blocca === '1'}
       />
     </div>

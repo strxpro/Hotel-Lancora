@@ -169,6 +169,7 @@ export function fromTables(t: TableRows): DB {
     hotel: s.hotel as Settings['hotel'], floors: s.floors as Settings['floors'], payments: s.payments as Settings['payments'], pricing: s.pricing as Settings['pricing'], stripeConnect: s.stripe_connect as Settings['stripeConnect'],
     notifications: s.notifications as Settings['notifications'], services: s.services as Settings['services'], reviews: s.reviews as Settings['reviews'], customAmenities: s.custom_amenities as Settings['customAmenities'], faq: s.faq as Settings['faq'], demoMode: bool(s.demo_mode),
     ...opt<'panel', NonNullable<Settings['panel']>>('panel', s.panel),
+    ...opt<'places', NonNullable<Settings['places']>>('places', s.places),
   };
   const channelState: ChannelState = { providerName: str(channel.provider_name), status: channel.status as ChannelState['status'], lastSync: isoN(channel.last_sync), importedCount: num(channel.imported_count), log: channel.log as ChannelState['log'], mapping: channel.mapping as ChannelState['mapping'], ...opt<'calendars', NonNullable<ChannelState['calendars']>>('calendars', channel.calendars), ...opt<'icalKey', string>('icalKey', channel.ical_key) };
   const telegramState: TelegramState = {

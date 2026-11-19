@@ -10,7 +10,7 @@ import type { TableName } from './tables';
 export const TABLE_COLUMNS: Record<TableName, readonly string[]> = {
   hotel_meta: ['id', 'schema_version', 'version', 'seeded_at', 'updated_at', 'synced_at'],
   settings: ['id', 'hotel', 'floors', 'payments', 'pricing', 'stripe_connect', 'notifications', 'services',
-    'reviews', 'custom_amenities', 'faq', 'demo_mode', 'panel'],
+    'reviews', 'custom_amenities', 'faq', 'demo_mode', 'panel', 'places'],
   staff_users: ['id', 'email', 'name', 'role', 'password_hash', 'created_at', 'two_factor'],
   rooms: ['id', 'number', 'slug', 'name', 'type', 'max_guests', 'beds', 'beds_count', 'bed_config', 'size_m2',
     'floor', 'base_price', 'cash_price', 'payment', 'number_auto', 'status', 'hidden', 'amenities', 'title', 'short_text',

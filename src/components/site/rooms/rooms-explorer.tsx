@@ -5,9 +5,10 @@ import type { AvailabilityResponse, RoomCardData } from '@/lib/room-card';
 import { useI18n, useLenis, useLiveVersion, scrollToTarget } from '../providers';
 import { SearchBar } from '../booking/search-bar';
 import { RoomsSection } from './rooms-section';
+import type { TouristTax } from '@/lib/tourist-tax';
 import { queryToParams, type StayQuery } from '../booking/query';
 
-export function RoomsExplorer({ rooms, initialQuery, initialResults, today, cashPercent = 0 }: { rooms: RoomCardData[]; initialQuery: StayQuery; initialResults: AvailabilityResponse | null; today: string; cashPercent?: number }) {
+export function RoomsExplorer({ rooms, initialQuery, initialResults, today, cashPercent = 0, tax = null }: { rooms: RoomCardData[]; initialQuery: StayQuery; initialResults: AvailabilityResponse | null; today: string; cashPercent?: number; tax?: TouristTax | null }) {
   const { locale } = useI18n();
   const router = useRouter();
   const lenis = useLenis();
@@ -82,6 +83,7 @@ export function RoomsExplorer({ rooms, initialQuery, initialResults, today, cash
           results={results}
           query={query}
           cashPercent={cashPercent}
+          tax={tax}
           onReset={() => {
             setResults(null);
             last.current = null;

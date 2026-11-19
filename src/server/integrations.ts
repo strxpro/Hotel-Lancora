@@ -33,7 +33,12 @@ export interface StoredIntegrations {
     connectedAt: string;
   };
   /** the hotel's own Stripe account, connected by pasting its two API keys */
-  stripe?: { secretKey: string; publishableKey: string; webhookSecret?: string; webhookId?: string; accountName?: string; /** the Connect endpoint (account.updated of the hotel's account) and the address both point at */ connectWebhookId?: string; connectWebhookSecret?: string; webhookUrl?: string };
+  stripe?: {
+    secretKey: string;
+    publishableKey: string;
+    /** whose account the keys open: 'hotel' = the hotel's own Stripe (money stays there, no "Collega Stripe"); otherwise the site's platform account */
+    owner?: 'hotel' | 'platform';
+    webhookSecret?: string; webhookId?: string; accountName?: string; /** the Connect endpoint (account.updated of the hotel's account) and the address both point at */ connectWebhookId?: string; connectWebhookSecret?: string; webhookUrl?: string };
   updatedAt?: string;
 }
 

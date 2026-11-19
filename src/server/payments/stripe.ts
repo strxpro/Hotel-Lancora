@@ -40,8 +40,18 @@ export function stripe(): Stripe {
   return client.c;
 }
 
+/**
+ * The keys on the site open the hotel's OWN Stripe account (connected in Collegamenti as "conto
+ * dell'hotel"): every payment lands there directly, no connected account, no "Collega Stripe".
+ * Keys in the server environment are always the platform's.
+ */
+export function hotelOwnStripe(): boolean {
+  return !process.env.STRIPE_SECRET_KEY && readIntegrations().stripe?.owner === 'hotel';
+}
+
 /** A connected account that can receive money (real, not the demo simulation). */
 export function payoutDestination(db: DB): string | null {
+  if (hotelOwnStripe()) return null;
   const c = db.settings.stripeConnect;
   return c.accountId && !c.simulated && c.chargesEnabled ? c.accountId : null;
 }
@@ -55,7 +65,28 @@ export function cardPaymentsReady(db: DB): boolean {
   const m = stripeMode();
   if (m === 'off') return false;
   if (m === 'test') return true;
+  // the hotel's own account: ready once Stripe has activated it for payments
+  if (hotelOwnStripe()) return db.settings.stripeConnect.direct === true && db.settings.stripeConnect.chargesEnabled;
   return payoutDestination(db) !== null;
+}
+
+const pa = globalThis as unknown as { __lancoraPlatform?: { key: string; at: number; ok: boolean } };
+
+/**
+ * With the platform's real keys, Stripe lets hotels connect only once the platform's own account
+ * is activated (data, document, IBAN). Read at most every 10 minutes; true when unsure (test keys,
+ * Stripe not answering) so the button is never hidden by mistake.
+ */
+export async function platformReady(): Promise<boolean> {
+  if (stripeMode() !== 'live' || hotelOwnStripe()) return true;
+  const key = stripeKeys().secret;
+  const c = pa.__lancoraPlatform;
+  if (c && c.key === key && Date.now() - c.at < (c.ok ? 3_600_000 : 600_000)) return c.ok;
+  const acc = await Promise.race([stripe().accounts.retrieveCurrent(), new Promise<null>((r) => setTimeout(() => r(null), 3500))]).catch(() => null);
+  if (!acc) return true;
+  const ok = Boolean(acc.charges_enabled || acc.details_submitted);
+  pa.__lancoraPlatform = { key, at: Date.now(), ok };
+  return ok;
 }
 
 /**
@@ -70,7 +101,7 @@ export function accountGone(e: unknown): boolean {
 
 /** The panel back to "not connected" (the account itself, if any, stays on Stripe). */
 export function clearConnect(db: DB): void {
-  Object.assign(db.settings.stripeConnect, { accountId: null, simulated: false, chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false, businessName: null, bankLast4: null, requirements: [], updatedAt: new Date().toISOString() });
+  Object.assign(db.settings.stripeConnect, { accountId: null, simulated: false, direct: false, chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false, businessName: null, bankLast4: null, requirements: [], updatedAt: new Date().toISOString() });
 }
 
 export function platformFee(amount: number): number | undefined {
@@ -217,6 +248,36 @@ export function statusFromAccount(acc: Stripe.Account): ConnectStatus {
 
 export async function retrieveConnectStatus(accountId: string): Promise<ConnectStatus> {
   return statusFromAccount(await stripe().accounts.retrieve(accountId));
+}
+
+const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+
+/** The hotel's own account (keys of the hotel): status, IBAN and payout calendar as Stripe has them. */
+export async function retrieveOwnStatus(): Promise<ConnectStatus> {
+  const s = stripe();
+  const acc = await s.accounts.retrieveCurrent();
+  const st = statusFromAccount(acc);
+  const bs = await s.balanceSettings.retrieve().catch(() => null);
+  const sch = bs?.payments?.payouts?.schedule;
+  if (sch?.interval && ['daily', 'weekly', 'monthly'].includes(sch.interval)) {
+    st.payoutInterval = sch.interval as PayoutInterval;
+    const wd = sch.weekly_payout_days?.find((d) => WEEKDAYS.includes(d));
+    if (wd) st.weeklyAnchor = wd;
+    if (sch.monthly_payout_days?.[0]) st.monthlyAnchor = sch.monthly_payout_days[0];
+  }
+  return st;
+}
+
+/** Payout calendar of the hotel's own account (Balance Settings: the account's own payouts). */
+export async function updateOwnPayoutSchedule(s: { interval: PayoutInterval; weeklyAnchor: string; monthlyAnchor: number }): Promise<ConnectStatus> {
+  const schedule =
+    s.interval === 'weekly'
+      ? { interval: 'weekly' as const, weekly_payout_days: [s.weeklyAnchor as 'monday'] }
+      : s.interval === 'monthly'
+        ? { interval: 'monthly' as const, monthly_payout_days: [s.monthlyAnchor] }
+        : { interval: 'daily' as const };
+  await stripe().balanceSettings.update({ payments: { payouts: { schedule } } });
+  return retrieveOwnStatus();
 }
 
 export async function connectDashboardLink(accountId: string): Promise<string> {

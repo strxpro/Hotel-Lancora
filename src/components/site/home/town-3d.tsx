@@ -1,10 +1,9 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Hand, Minus, Plus, RotateCcw } from 'lucide-react';
-import { EXPERIENCES } from '@/content/experiences';
 import { EXTRA_T } from '@/lib/i18n/reviews-dict';
 import { cn } from '@/lib/utils';
-import { useI18n } from '../providers';
+import { useI18n, usePlaces } from '../providers';
 import { km } from '../place-map';
 
 /**
@@ -42,6 +41,9 @@ type Label = { el: HTMLElement; x: number; y: number; z: number; lw?: number; ho
 
 export function Town3D({ hotel, hint, className }: { hotel: { lat: number; lng: number; name: string }; hint: string; className?: string }) {
   const { locale } = useI18n();
+  const places = usePlaces();
+  const placesRef = useRef(places);
+  placesRef.current = places;
   const x = EXTRA_T[locale];
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -451,7 +453,7 @@ export function Town3D({ hotel, hint, className }: { hotel: { lat: number; lng: 
       const pinMat = new THREE.MeshStandardMaterial({ color: '#b69562', roughness: 0.35, metalness: 0.5 });
       const stickMat = new THREE.MeshBasicMaterial({ color: '#10283d' });
       const mLng = M_LNG;
-      EXPERIENCES.forEach((p, i) => {
+      placesRef.current.forEach((p, i) => {
         const xm = (p.lng - geo.center.lng) * mLng;
         const ym = (geo.center.lat - p.lat) * 111320;
         if (Math.hypot(xm - HX, ym - HY) < 60) return; // too close to the hotel to show apart

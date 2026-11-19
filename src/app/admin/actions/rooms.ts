@@ -1,7 +1,7 @@
 'use server';
 import { z } from 'zod';
 import { act, UserError } from '@/server/action';
-import { addBlock, addRatePeriod, deleteRoom, removeBlock, removeRatePeriod, saveRatePeriod, saveRoom, saveTranslation, setPeriodPrice, setRoomPrice, setRoomsPrice, setRoomVisibility } from '@/server/rooms';
+import { addBlock, addRatePeriod, deleteRoom, removeBlock, removeRatePeriod, saveRatePeriod, saveRoom, saveTranslation, setPeriodPrice, setRoomPrice, setRoomsPrice, setRoomVisibility, setRoomsOpen } from '@/server/rooms';
 import { improveRoomText, translateFields, translateRoomText, translationProvider } from '@/server/ai/content';
 import { mutate, readDb } from '@/server/db/store';
 import { audit } from '@/server/events';
@@ -371,5 +371,15 @@ export async function removeCustomAmenityAction(key: string) {
       audit(db, u.name, 'amenity_remove', 'settings', k, `${c?.label ?? k} · tolto da ${rooms} camere`);
       return { rooms };
     });
+  });
+}
+
+/** Vista Booking: some nights of some rooms open (bookable) or closed. */
+export async function setRoomsOpenAction(raw: unknown) {
+  return act('bookings.manage', (u) => {
+    const p = z.object({ roomIds: z.array(z.string()).min(1).max(100), from: z.string(), to: z.string(), open: z.boolean() }).parse(raw);
+    const r = setRoomsOpen(p, u.name);
+    if (!r.changed && r.portal) throw new UserError('Queste notti sono chiuse dal calendario di un portale (Booking, Airbnb…): si riaprono dal portale.');
+    return r;
   });
 }

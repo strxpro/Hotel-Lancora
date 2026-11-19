@@ -45,7 +45,7 @@ export default async function RoomPage({ params, searchParams }: Props) {
   const priced = onlineRoom(room, db.settings);
   return (
     <RoomDetail
-      room={{ id: room.id, slug: room.slug, number: room.numberAuto ? '' : room.number, title: room.t.title, type: room.type, maxGuests: room.maxGuests, beds: room.beds, size: room.size, floor: room.floor, basePrice: priced.basePrice, cashPercent: pay.cash ? cashPercentFor(priced, db.settings.payments) : 0, cardOk: pay.card, amenities: room.amenities, photos: room.photos, short: room.t.short, description: room.t.description }}
+      room={{ id: room.id, slug: room.slug, number: '', title: room.t.title, type: room.type, maxGuests: room.maxGuests, beds: room.beds, size: room.size, floor: room.floor, basePrice: priced.basePrice, cashPercent: pay.cash ? cashPercentFor(priced, db.settings.payments) : 0, cardOk: pay.card, amenities: room.amenities, photos: room.photos, short: room.t.short, description: room.t.description }}
       nightly={priceExceptions(priced, onlinePeriods(db.ratePeriods, db.settings), today, addDays(today, 400))}
       occupied={room.status === 'available' ? occupiedNights(db, room.id, today, addDays(today, 400)) : []}
       similar={similar}

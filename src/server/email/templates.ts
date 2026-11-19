@@ -186,7 +186,7 @@ function summary(b: Booking, room: Room | null, settings: Settings, lang: Locale
   const count = (n: number, [one, many]: [string, string]) => (n === 1 ? one : many.replace('{n}', String(n)));
   const rows: [string, string][] = [
     [s.code, b.code],
-    [s.room, room ? `${roomTitle(room, lang)} · ${s.no.replace('{n}', room.number)}` : s.toAssign],
+    [s.room, room ? roomTitle(room, lang) : s.toAssign],
     [s.arrival, `${fmtDateLong(b.checkIn, lang)} · ${s.from.replace('{t}', settings.hotel.checkInFrom)}`],
     [s.departure, `${fmtDateLong(b.checkOut, lang)} · ${s.by.replace('{t}', settings.hotel.checkOutBy)}`],
     [s.nights, String(nights)],
@@ -363,7 +363,7 @@ export function renderEmail(template: EmailTemplate, ctx: EmailContext): Rendere
     }
     case 'richiesta_recensione': {
       const L = REVIEW_ASK[lang] ?? REVIEW_ASK.it;
-      const roomName = room ? `${roomTitle(room, lang)} (${room.number})` : '';
+      const roomName = room ? roomTitle(room, lang) : '';
       subject = L.subject.replace('{room}', roomName || L.yourRoom);
       title = L.title.replace('{name}', nameRaw);
       body = p(esc(L.body).replace('{room}', `<strong>${esc(roomName || L.yourRoom)}</strong>`)) + p(`<span style="font-size:26px;letter-spacing:6px;color:#B69562;">★★★★★</span>`) + p(esc(L.photos));

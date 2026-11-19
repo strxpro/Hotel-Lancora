@@ -22,6 +22,8 @@ export interface ConnectView {
   updatedAt: string | null;
   /** every card payment goes on to the hotel's card at once */
   autoInstant?: boolean;
+  /** the site's keys are the hotel's own Stripe account (no connected account) */
+  direct?: boolean;
 }
 
 const EASE = [0.22, 0.61, 0.12, 1] as const;

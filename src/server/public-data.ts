@@ -23,7 +23,8 @@ export function toCard(r: LocalizedRoom, popularity = 0, payments?: DB['settings
   return {
     id: r.id,
     slug: r.slug,
-    number: r.numberAuto ? '' : r.number,
+    // the number is only for the hotel (panel, bot): guests see the room's name
+    number: '',
     name: r.t.title || r.name,
     type: r.type,
     maxGuests: r.maxGuests,

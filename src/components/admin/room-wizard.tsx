@@ -343,7 +343,7 @@ export function RoomWizard({ room, enableLower, canEditPrice, canDelete, transla
             {step === 0 && (
               <div className="mt-7 space-y-7">
                 <div className="grid gap-5 sm:grid-cols-2">
-                  <Input label="Numero camera (facoltativo)" hint={dup ? undefined : 'Es. 113. Lascia vuoto se le camere non hanno numero'} error={err('number') === 'dup' ? undefined : err('number')} flash={fl('number')}>
+                  <Input label="Numero camera (facoltativo)" hint={dup ? undefined : 'Solo per te (pannello e bot): gli ospiti vedono solo il nome. Puoi lasciarlo vuoto'} error={err('number') === 'dup' ? undefined : err('number')} flash={fl('number')}>
                     <input className={cn('field', dup && 'border-terracotta')} value={f.number} onChange={(e) => set('number', e.target.value)} inputMode="numeric" maxLength={8} aria-invalid={Boolean(err('number')) || Boolean(dup)} aria-describedby={dup ? 'dup-number' : undefined} />
                     <AnimatePresence initial={false}>
                       {dup && (

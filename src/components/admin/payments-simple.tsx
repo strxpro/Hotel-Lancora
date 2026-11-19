@@ -99,13 +99,14 @@ export function MoneyHero({ monthLabel, month, today, due, cashDue, byCard, byCa
 
 const INTERVAL: Record<ConnectView['payoutInterval'], string> = { daily: 'ogni giorno', weekly: 'ogni settimana', monthly: 'ogni mese' };
 
-export function AccountCard({ c, mode, demo = true }: { c: ConnectView; mode: 'test' | 'live' | 'off'; demo?: boolean }) {
+export function AccountCard({ c, mode, demo = true, platformOk = true, support = false }: { c: ConnectView; mode: 'test' | 'live' | 'off'; demo?: boolean; /** Stripe lets hotels connect (the site's own account is activated) */ platformOk?: boolean; /** the technical assistance (not the owner) is looking */ support?: boolean }) {
   const { run, pending } = useAction();
   const [open, setOpen] = useState(false);
   const [sched, setSched] = useState({ interval: c.payoutInterval, weeklyAnchor: (DAYS.some(([k]) => k === c.weeklyAnchor) ? c.weeklyAnchor : 'monday') as (typeof DAYS)[number][0], monthlyAnchor: c.monthlyAnchor });
   const upcoming = useMemo(() => nextPayouts(sched.interval, sched.weeklyAnchor, sched.monthlyAnchor), [sched]);
   const connected = Boolean(c.accountId);
-  const ready = connected && (c.detailsSubmitted || c.simulated);
+  const ready = (connected && (c.detailsSubmitted || c.simulated)) || (c.direct === true && c.detailsSubmitted);
+  const waiting = mode === 'live' && !connected && !c.direct && !platformOk;
   const go = (fn: () => Promise<{ ok: true; data?: { url: string } } | { ok: false; error: string }>) => run(fn, { onOk: (d) => d?.url && window.location.assign(d.url) });
   const day = DAYS.find(([k]) => k === c.weeklyAnchor)?.[1] ?? 'Lun';
   const when = c.payoutInterval === 'weekly' ? `ogni settimana, ${day.toLowerCase()}` : c.payoutInterval === 'monthly' ? `ogni mese, il ${c.monthlyAnchor === 31 ? 'ultimo giorno' : c.monthlyAnchor}` : 'ogni giorno lavorativo';
@@ -139,7 +140,7 @@ export function AccountCard({ c, mode, demo = true }: { c: ConnectView; mode: 't
               </span>
               <span className="text-xs font-semibold text-navy underline-offset-2 hover:underline">Cambia</span>
             </button>
-            {(mode !== 'off' || c.simulated) && <InstantPayout auto={c.autoInstant ?? false} />}
+            {(mode !== 'off' || c.simulated) && !c.direct && <InstantPayout auto={c.autoInstant ?? false} />}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {!c.simulated && (
                 <button type="button" disabled={pending} onClick={() => go(stripeDashboardAction)} className="flex h-9 items-center gap-1.5 rounded-full border border-line px-3.5 text-xs font-semibold text-navy hover:border-navy">
@@ -149,18 +150,28 @@ export function AccountCard({ c, mode, demo = true }: { c: ConnectView; mode: 't
               <button type="button" disabled={pending} onClick={() => run(refreshStripeConnectAction)} aria-label="Aggiorna" title="Aggiorna" className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-navy hover:border-navy">
                 <RefreshCw className={cn('h-3.5 w-3.5', pending && 'animate-spin')} />
               </button>
-              <button type="button" disabled={pending} onClick={() => run(disconnectStripeAction)} className="ml-auto flex items-center gap-1 text-[0.7rem] text-mist hover:text-terracotta">
-                <Unplug className="h-3.5 w-3.5" /> Scollega
-              </button>
+              {!c.direct && (
+                <button type="button" disabled={pending} onClick={() => run(disconnectStripeAction)} className="ml-auto flex items-center gap-1 text-[0.7rem] text-mist hover:text-terracotta">
+                  <Unplug className="h-3.5 w-3.5" /> Scollega
+                </button>
+              )}
             </div>
           </motion.div>
         ) : (
           <motion.div key="todo" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-5 flex flex-1 flex-col">
-            <p className="serif text-[1.6rem] leading-tight text-navy">{connected ? 'Manca poco' : 'Ricevi i pagamenti sul tuo conto'}</p>
-            <p className="mt-1.5 text-[0.82rem] leading-relaxed text-mist">{connected ? 'Stripe chiede ancora qualche dato: un minuto e hai finito.' : 'Un clic: Stripe ti guida, verifica i dati e da quel momento gli incassi con carta arrivano a te.'}</p>
+            <p className="serif text-[1.6rem] leading-tight text-navy">{connected || c.direct ? 'Manca poco' : waiting ? 'Quasi pronto' : 'Ricevi i pagamenti sul tuo conto'}</p>
+            <p className="mt-1.5 text-[0.82rem] leading-relaxed text-mist">
+              {c.direct
+                ? 'Il conto Stripe dell’hotel è collegato: Stripe chiede ancora i dati dell’attività, un documento e l’IBAN. Poi i pagamenti con carta partono da soli.'
+                : connected
+                  ? 'Stripe chiede ancora qualche dato: un minuto e hai finito.'
+                  : waiting
+                    ? 'I pagamenti con carta si attivano appena l’assistenza tecnica completa la verifica su Stripe. Intanto gli ospiti prenotano e pagano in hotel.'
+                    : 'Un clic: Stripe ti guida, verifica i dati e da quel momento gli incassi con carta arrivano a te.'}
+            </p>
             <ul className="mt-4 space-y-2">
               {[
-                { i: Wallet, t: 'Crea il conto', d: connected },
+                { i: Wallet, t: 'Crea il conto', d: connected || c.direct === true },
                 { i: ShieldCheck, t: 'Verifica documento e IBAN', d: c.detailsSubmitted },
                 { i: Landmark, t: 'Ricevi i bonifici', d: c.payoutsEnabled },
               ].map((s, k) => (
@@ -171,7 +182,25 @@ export function AccountCard({ c, mode, demo = true }: { c: ConnectView; mode: 't
               ))}
             </ul>
             <div className="mt-auto flex flex-wrap gap-2 pt-5">
-              {mode !== 'off' && (
+              {waiting && support && (
+                <div className="w-full rounded-2xl border border-gold/40 bg-gold/10 px-4 py-3 text-[0.78rem] leading-relaxed text-charcoal/85">
+                  <p className="font-semibold text-navy">Solo per l’assistenza tecnica</p>
+                  <p className="mt-1">Il conto Stripe del sito non è ancora attivo, quindi Stripe non crea il conto dell’hotel. Due strade:</p>
+                  <p className="mt-1">1. Attiva il conto del sito su dashboard.stripe.com (“Attiva i pagamenti”).</p>
+                  <p>2. Più semplice: in Impostazioni › Collegamenti › Stripe incolla le chiavi del conto Stripe dell’hotel e scegli “Conto dell’hotel”.</p>
+                </div>
+              )}
+              {c.direct && (
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} type="button" disabled={pending} onClick={() => go(stripeDashboardAction)} className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#635bff] px-5 text-sm font-semibold text-white shadow-[0_18px_40px_-20px_rgba(99,91,255,0.9)] disabled:opacity-60">
+                  {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />} Completa su Stripe
+                </motion.button>
+              )}
+              {c.direct && (
+                <button type="button" disabled={pending} onClick={() => run(refreshStripeConnectAction)} aria-label="Aggiorna" title="Aggiorna" className="flex h-12 w-12 items-center justify-center rounded-full border border-line text-navy hover:border-navy">
+                  <RefreshCw className={cn('h-4 w-4', pending && 'animate-spin')} />
+                </button>
+              )}
+              {mode !== 'off' && !waiting && !c.direct && (
                 <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} type="button" disabled={pending} onClick={() => go(startStripeConnectAction)} className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#635bff] px-5 text-sm font-semibold text-white shadow-[0_18px_40px_-20px_rgba(99,91,255,0.9)] disabled:opacity-60">
                   {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />} {connected ? 'Completa la verifica' : 'Collega Stripe'}
                 </motion.button>

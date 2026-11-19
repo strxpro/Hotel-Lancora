@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { AlertTriangle, ArrowRight, AudioLines, Bot, Check, CircleDashed, Loader2, Wand2, ChevronDown, Copy, CreditCard, ExternalLink, Languages, Mail, Mic, Network, Smartphone, Sparkles, Unplug, User, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, useAction, useToast } from './ui';
-import { connectCloudflareEmailAction, connectEmailWebhookAction, connectGroqAction, connectSmtpAction, connectStripeAction, disconnectEmailAction, sendTestEmailAction, disconnectGroqAction, disconnectStripeAction, setTranslationsAction, autoSetupAction, type SetupCheck } from '@/app/admin/actions/integrations';
+import { connectCloudflareEmailAction, connectEmailWebhookAction, connectGroqAction, connectSmtpAction, connectStripeAction, setStripeOwnerAction, disconnectEmailAction, sendTestEmailAction, disconnectGroqAction, disconnectStripeAction, setTranslationsAction, autoSetupAction, type SetupCheck } from '@/app/admin/actions/integrations';
 import { generateLinkCode, testTelegram, unlinkChat } from '@/app/admin/actions/automation';
 import { removeGeminiKeyAction, saveGeminiKeyAction } from '@/app/admin/actions/live';
 
@@ -17,7 +17,7 @@ export interface ConnectionsData {
   telegram: { configured: boolean; chats: { chatId: string; name: string; linkedAt: string }[]; linkCode: { code: string; expiresAt: string } | null };
   smtp: { connected: boolean; kind: 'smtp' | 'cloudflare' | 'webhook' | null; source: 'panel' | 'env' | null; from: string | null; host: string | null; hotelEmail: string };
   translations: { mode: 'mymemory' | 'off'; ai: boolean };
-  stripe: { mode: 'test' | 'live' | 'off'; source: 'env' | 'panel' | null; account: string | null; webhook: boolean; https: boolean; /** key fields are a developer tool: shown while the site is a demo, and on the real site only to the technical assistance, never to the hotel owner */ keysInPanel?: boolean; /** the real site (not the demo): live keys take real money */ real?: boolean };
+  stripe: { mode: 'test' | 'live' | 'off'; source: 'env' | 'panel' | null; account: string | null; webhook: boolean; https: boolean; /** key fields are a developer tool: shown while the site is a demo, and on the real site only to the technical assistance, never to the hotel owner */ keysInPanel?: boolean; /** the real site (not the demo): live keys take real money */ real?: boolean; /** whose account the keys open: the hotel's own (payments land there) or the site's platform */ owner?: 'hotel' | 'platform' };
   channel: string;
   channelOn?: boolean;
 }
@@ -120,6 +120,7 @@ export function Connections({ data }: { data: ConnectionsData }) {
   const [gkey, setGkey] = useState('');
   const [sk, setSk] = useState('');
   const [pk, setPk] = useState('');
+  const [owner, setOwner] = useState<'hotel' | 'platform'>('hotel');
   const [code, setCode] = useState(data.telegram.linkCode);
   const [smtp, setSmtp] = useState({ preset: 'brevo' as 'brevo' | 'gmail' | 'altro', host: '', port: 587, user: '', pass: '', fromName: 'Hotel L’Ancora', fromEmail: '' });
   const [mailWay, setMailWay] = useState<'make' | 'cloudflare' | 'smtp'>('make');
@@ -479,6 +480,9 @@ export function Connections({ data }: { data: ConnectionsData }) {
                 {data.stripe.mode === 'test' ? 'Modalità prova: nessun addebito reale (carta di prova 4242 4242 4242 4242).' : 'Pagamenti con carta attivi: gli incassi arrivano sul conto dell’hotel.'}
               </p>
               <p className="text-xs text-mist">Le prenotazioni pagate si confermano da sole.</p>
+              {data.stripe.keysInPanel && data.stripe.source === 'panel' && (
+                <StripeOwner account={data.stripe.account} value={data.stripe.owner ?? 'platform'} disabled={pending} onChange={(o) => run(() => setStripeOwnerAction(o), { onOk: () => toast('ok', o === 'hotel' ? 'Fatto: gli incassi arrivano direttamente su questo conto Stripe.' : 'Fatto: l’hotel collega il suo conto con “Collega Stripe” in Pagamenti.') })} />
+              )}
               <div className="flex flex-wrap gap-2">
                 {data.stripe.source === 'panel' && (
                   <Button variant="line" size="sm" disabled={pending} onClick={() => run(() => disconnectStripeAction())}>
@@ -534,10 +538,13 @@ export function Connections({ data }: { data: ConnectionsData }) {
                   <>Incollale qui sotto e premi “Collega”. Controllo io che funzionino; quando il sito è online creo anche il collegamento automatico (webhook).</>,
                 ]}
               />
-              <div className="mt-4 space-y-2">
+              <div className="mt-4">
+                <StripeOwner value={owner} onChange={setOwner} />
+              </div>
+              <div className="mt-3 space-y-2">
                 <input className="field font-mono text-sm" autoComplete="off" spellCheck={false} placeholder={data.stripe.real ? 'pk_live_…' : 'pk_test_…'} value={pk} onChange={(e) => setPk(e.target.value)} aria-label="Chiave pubblicabile Stripe" />
                 <input className="field font-mono text-sm" type="password" autoComplete="off" spellCheck={false} placeholder={data.stripe.real ? 'sk_live_…' : 'sk_test_…'} value={sk} onChange={(e) => setSk(e.target.value)} aria-label="Chiave segreta Stripe" />
-                <Button disabled={pending || sk.trim().length < 20 || pk.trim().length < 20} onClick={() => run(() => connectStripeAction(sk, pk), { onOk: (d) => { const r = d as { accountName: string; webhook: boolean }; setSk(''); setPk(''); toast('ok', `Stripe collegato: ${r.accountName}${r.webhook ? ' · conferma automatica attiva' : ''}.`); } })}>
+                <Button disabled={pending || sk.trim().length < 20 || pk.trim().length < 20} onClick={() => run(() => connectStripeAction(sk, pk, owner), { onOk: (d) => { const r = d as { accountName: string; webhook: boolean }; setSk(''); setPk(''); toast('ok', `Stripe collegato: ${r.accountName}${r.webhook ? ' · conferma automatica attiva' : ''}.`); } })}>
                   {pending ? 'Controllo…' : 'Collega Stripe'}
                 </Button>
               </div>
@@ -638,6 +645,27 @@ function SetupAll({ onOpen }: { onOpen: (tile: string) => void }) {
           </motion.ul>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+/** Whose Stripe the keys open: the hotel's own (money lands there, nothing else to do) or the site's platform (the hotel then presses "Collega Stripe"). */
+function StripeOwner({ value, onChange, account, disabled }: { value: 'hotel' | 'platform'; onChange: (v: 'hotel' | 'platform') => void; account?: string | null; disabled?: boolean }) {
+  const opts = [
+    { v: 'hotel' as const, t: 'Conto dell’hotel', d: 'Gli incassi arrivano direttamente qui. Consigliato.' },
+    { v: 'platform' as const, t: 'Conto del sito', d: 'L’hotel poi collega il suo conto con “Collega Stripe”.' },
+  ];
+  return (
+    <div>
+      <p className="mb-2 text-[0.66rem] font-semibold uppercase tracking-[0.16em] text-mist">{account ? `Di chi è il conto Stripe “${account}”?` : 'Di chi è questo conto Stripe?'}</p>
+      <div role="radiogroup" className="grid gap-2 sm:grid-cols-2">
+        {opts.map((o) => (
+          <button key={o.v} type="button" role="radio" aria-checked={value === o.v} disabled={disabled || value === o.v} onClick={() => onChange(o.v)} className={cn('rounded-2xl border px-3.5 py-2.5 text-left transition-colors', value === o.v ? 'border-navy bg-navy text-ivory' : 'border-line bg-white text-navy hover:border-navy/50')}>
+            <span className="flex items-center gap-1.5 text-sm font-semibold">{value === o.v && <Check className="h-3.5 w-3.5" />}{o.t}</span>
+            <span className={cn('mt-0.5 block text-[0.72rem] leading-snug', value === o.v ? 'text-ivory/75' : 'text-mist')}>{o.d}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

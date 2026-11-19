@@ -143,7 +143,7 @@ export function guestOverview(email: string): { name: string; stays: GuestStay[]
       token: b.token,
       code: b.code,
       roomName: r?.name ?? null,
-      roomNumber: r?.number ?? null,
+      roomNumber: null,
       photo: r?.photos?.[0]?.src ?? null,
       checkIn: b.checkIn,
       checkOut: b.checkOut,

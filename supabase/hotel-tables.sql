@@ -55,6 +55,7 @@ create table if not exists public.settings (
   faq jsonb not null default '[]',
   demo_mode boolean not null default false,
   panel jsonb,                                        -- the owner's first set-up, times of the Telegram reports
+  places jsonb,                                       -- beaches and places around the hotel as the owner edited them
   constraint settings_payments_shape check (
     payments->>'mode' in ('full', 'deposit_percent', 'deposit_fixed')
     and jsonb_typeof(payments->'depositPercent') = 'number'
@@ -70,6 +71,7 @@ create table if not exists public.settings (
   )
 );
 alter table public.settings add column if not exists panel jsonb;
+alter table public.settings add column if not exists places jsonb;
 
 -- ── staff (the app's own login, not Supabase Auth) ─────────────────────────
 create table if not exists public.staff_users (

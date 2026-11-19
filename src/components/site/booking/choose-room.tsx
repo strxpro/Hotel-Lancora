@@ -3,8 +3,9 @@ import { useMemo, useRef, useState } from 'react';
 import { LiveMoney } from '../live-money';
 import Image from 'next/image';
 import { AnimatePresence, motion } from 'motion/react';
-import { BedDouble, Check, Maximize2, ShieldCheck, Sparkles, Star, Users, Waves } from 'lucide-react';
-import type { RoomCardData, RoomResult } from '@/lib/room-card';
+import { ArrowRight, BedDouble, CalendarSearch, Check, Maximize2, ShieldCheck, Sparkles, Star, Users, Waves } from 'lucide-react';
+import type { AvailabilityResponse, RoomCardData, RoomResult } from '@/lib/room-card';
+import { diffDays, fmtDate } from '@/lib/dates';
 import { fill, plural } from '@/lib/i18n/config';
 import { amenityLabel } from '@/content/amenities';
 import { cn, money } from '@/lib/utils';
@@ -31,6 +32,7 @@ export function ChooseRoom({
   busy,
   rooms,
   available,
+  alternatives = [],
   selected,
   onPick,
   cashPercent,
@@ -42,6 +44,8 @@ export function ChooseRoom({
   busy: boolean;
   rooms: RoomCardData[];
   available: RoomResult[] | null;
+  /** nearest stays with free rooms, when these dates have none */
+  alternatives?: AvailabilityResponse['alternatives'];
   selected: string | null;
   onPick: (slug: string) => void;
   cashPercent: number;
@@ -147,7 +151,43 @@ export function ChooseRoom({
           ))}
         </div>
       </div>
-      {hasDates && list.length === 0 && <p className="mt-6 text-charcoal/75">{t.booking.noRooms}</p>}
+      {hasDates && list.length === 0 && (
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: EASE }} className="mt-6 overflow-hidden rounded-[1.75rem] border border-line bg-white p-6 md:p-8">
+          <div className="flex items-start gap-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sand-2 text-gold-2">
+              <CalendarSearch className="h-6 w-6" strokeWidth={1.4} />
+            </span>
+            <div className="min-w-0">
+              <p className="serif text-[1.7rem] leading-tight text-navy">{t.rooms.noneTitle}</p>
+              <p className="mt-1.5 text-[0.9rem] leading-relaxed text-charcoal/75">{alternatives.length ? t.rooms.noneText : t.rooms.noneAlt}</p>
+            </div>
+          </div>
+          {alternatives.length > 0 && (
+            <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+              {alternatives.map((a, i) => {
+                const n = diffDays(a.checkIn, a.checkOut);
+                return (
+                  <motion.li key={a.checkIn + a.checkOut} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.07, duration: 0.5, ease: EASE }}>
+                    <button type="button" disabled={busy} onClick={() => onSearch({ ...query, checkIn: a.checkIn, checkOut: a.checkOut })} className="group flex w-full items-center gap-4 rounded-2xl border border-line bg-ivory px-4 py-4 text-left transition-[border-color,background-color,transform] duration-300 hover:-translate-y-0.5 hover:border-navy hover:bg-white">
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[0.95rem] font-semibold text-navy">
+                          {fmtDate(a.checkIn, locale, { weekday: 'short', day: 'numeric', month: 'short' })} → {fmtDate(a.checkOut, locale, { weekday: 'short', day: 'numeric', month: 'short' })}
+                        </span>
+                        <span className="mt-1 block text-xs text-mist">
+                          {plural(locale, n, t.booking.nights)} · {plural(locale, a.count, t.rooms.results)} · {t.rooms.from} {money(a.from, locale)}
+                        </span>
+                      </span>
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-navy text-ivory transition-transform duration-300 group-hover:translate-x-0.5">
+                        <ArrowRight className="h-4 w-4" />
+                      </span>
+                    </button>
+                  </motion.li>
+                );
+              })}
+            </ul>
+          )}
+        </motion.div>
+      )}
 
       <motion.ul layout className="mt-6 space-y-4">
         <AnimatePresence initial={false}>

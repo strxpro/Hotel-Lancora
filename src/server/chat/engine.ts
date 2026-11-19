@@ -5,7 +5,7 @@ import { isPubliclyBookable, searchAvailability } from '@/lib/availability';
 import { addDays, fmtDate } from '@/lib/dates';
 import { localePath } from '@/lib/i18n/config';
 import { money, ospiti } from '@/lib/utils';
-import { EXPERIENCES } from '@/content/experiences';
+import { publicPlaces } from '../places';
 import { amenityLabel } from '@/content/amenities';
 import { getDictionary } from '@/lib/i18n/dictionaries';
 import { localizeRoom } from '../rooms';
@@ -189,7 +189,7 @@ export function answerKB(db: DB, message: string, lang: Locale, today: string): 
   if (RX.modify.test(n) && (RX.booking.test(n) || n.split(' ').length < 9)) return reply('modify', fillT(T.modify[lang], { phone: c.phone, email: c.email }), [contactAction]);
 
   if (RX.beach.test(n)) {
-    const list = EXPERIENCES.filter((x) => x.beach)
+    const list = publicPlaces(db).filter((x) => x.beach)
       .map((x) => `${x.name} (${x.distance}, ${x.time[lang]})`)
       .join('; ');
     return reply('beaches', fillT(T.beaches[lang], { list }), [{ label: t.nav.experiences, href: L('/esperienze') }]);
@@ -220,7 +220,7 @@ export function buildSystemPrompt(db: DB, lang: Locale, today: string): string {
   const h = db.settings.hotel;
   const rooms = db.rooms.filter(isPubliclyBookable).map((r) => {
     const l = localizeRoom(r, 'it');
-    return `- ${l.t.title} (n. ${r.number}): ${r.type}, max ${ospiti(r.maxGuests)}, ${r.beds}, ${r.size ?? '?'} m², ${r.floor === 'terra' ? 'piano terra' : r.floor === 'superiore' ? 'piano superiore' : 'piano inferiore'}, da € ${onlineRoom(r, db.settings).basePrice}/notte. Dotazioni: ${r.amenities.map((a) => amenityLabel(a, 'it')).join(', ')}.`;
+    return `- ${l.t.title}: ${r.type}, max ${ospiti(r.maxGuests)}, ${r.beds}, ${r.size ?? '?'} m², ${r.floor === 'terra' ? 'piano terra' : r.floor === 'superiore' ? 'piano superiore' : 'piano inferiore'}, da € ${onlineRoom(r, db.settings).basePrice}/notte. Dotazioni: ${r.amenities.map((a) => amenityLabel(a, 'it')).join(', ')}.`;
   });
   const nights = Array.from({ length: 14 }, (_, i) => addDays(today, i)).map((d) => {
     const free = searchAvailability(db, { checkIn: d, checkOut: addDays(d, 1), adults: 1, children: 0 }).filter((r) => r.available);
@@ -246,6 +246,6 @@ export function buildSystemPrompt(db: DB, lang: Locale, today: string): string {
     'FAQ:',
     ...db.settings.faq.map((f) => `- ${f.question} → ${f.answer}`),
     'DINTORNI (distanze indicative):',
-    ...EXPERIENCES.map((x) => `- ${x.name}: ${x.kind.it}, ${x.distance}, ${x.time.it}. ${x.text.it}`),
+    ...publicPlaces(db).map((x) => `- ${x.name}: ${x.kind.it}, ${x.distance}, ${x.time.it}. ${x.text.it}`),
   ].join('\n');
 }

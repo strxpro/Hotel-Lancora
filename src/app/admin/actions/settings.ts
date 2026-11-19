@@ -144,3 +144,69 @@ export async function changePasswordAction(current: string, next: string) {
     if (me) await issueSession(me);
   }, 'Password aggiornata: gli altri dispositivi dovranno accedere di nuovo.');
 }
+
+const PlacePhoto = z.object({ id: z.string().max(80), src: z.string().trim().min(1).max(800), alt: z.string().max(200), width: z.number().min(0).max(20000), height: z.number().min(0).max(20000), demo: z.boolean(), credit: z.string().max(160).optional() });
+const LangText = (max: number) => z.partialRecord(z.enum(['it', 'en', 'pl', 'de', 'fr', 'es']), z.string().max(max));
+const Place = z.object({
+  id: z.string().regex(/^[a-z0-9-]{1,60}$/),
+  name: z.string().trim().min(1, 'Ogni luogo ha bisogno di un nome.').max(80),
+  kind: LangText(60),
+  text: LangText(1500),
+  time: LangText(80),
+  distance: z.string().trim().max(30),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  beach: z.boolean(),
+  photos: z.array(PlacePhoto).max(12),
+  hidden: z.boolean().optional(),
+  custom: z.boolean().optional(),
+});
+
+/** Impostazioni → Spiagge e dintorni: photos, names and texts of the places shown on the site. */
+export async function savePlacesAction(raw: unknown) {
+  return act('settings.edit', async (u) => {
+    const list = z.array(Place).max(30).parse(raw);
+    if (new Set(list.map((p) => p.id)).size !== list.length) throw new UserError('Due luoghi hanno lo stesso codice: ricarica la pagina e riprova.');
+    const { placeList, translatePlacesLater } = await import('@/server/places');
+    const before = new Map(placeList(readDb()).map((p) => [p.id, p]));
+    const changed: string[] = [];
+    for (const p of list) {
+      const b = before.get(p.id);
+      // the Italian changed: the old translations no longer match it (Italian shows until the new ones are ready)
+      for (const f of ['kind', 'text', 'time'] as const) {
+        if (!b || (b[f].it ?? '') !== (p[f].it ?? '')) {
+          p[f] = { it: p[f].it ?? '' };
+          if (!changed.includes(p.id)) changed.push(p.id);
+        }
+      }
+    }
+    mutate((db) => {
+      db.settings.places = list;
+      audit(db, u.name, 'update', 'settings', null, `Spiagge e dintorni: ${list.filter((p) => !p.hidden).length} luoghi sul sito`);
+    });
+    translatePlacesLater(changed);
+  }, 'Salvato: il sito mostra già i luoghi aggiornati.');
+}
+
+/** Back to the site's original places (photos and texts). */
+export async function resetPlacesAction() {
+  return act('settings.edit', (u) => {
+    mutate((db) => {
+      delete db.settings.places;
+      audit(db, u.name, 'update', 'settings', null, 'Spiagge e dintorni: tornati i luoghi originali');
+    });
+  }, 'Fatto: tornati i luoghi originali.');
+}
+
+/** Impostazioni → Arrivo e partenza: only the three hours (saved by themselves as the owner changes them). */
+export async function saveStayTimesAction(raw: unknown) {
+  return act('settings.edit', (u) => {
+    const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Orario non valido');
+    const t = z.object({ checkInFrom: hhmm, checkInTo: hhmm, checkOutBy: hhmm }).parse(raw);
+    if (t.checkInTo <= t.checkInFrom) throw new UserError('L’orario di fine check-in deve venire dopo quello di inizio.');
+    mutate((db) => {
+      Object.assign(db.settings.hotel, t);
+      audit(db, u.name, 'update', 'settings', null, `Check-in ${t.checkInFrom}–${t.checkInTo}, check-out entro ${t.checkOutBy}`);
+    });
+  });
+}

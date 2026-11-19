@@ -272,7 +272,7 @@ function StayCard({ stay: s, index, compact }: { stay: GuestStay; index: number;
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <span className={cn('inline-flex items-center rounded-full px-3 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.16em]', TONE[s.state])}>{a.states[s.state]}</span>
-            <p className={cn('serif mt-3 leading-tight text-navy', compact ? 'text-[1.4rem]' : 'text-[1.9rem]', s.state === 'cancelled' && 'line-through decoration-1')}>{s.roomName ? `${s.roomName} · N° ${s.roomNumber}` : a.roomTbd}</p>
+            <p className={cn('serif mt-3 leading-tight text-navy', compact ? 'text-[1.4rem]' : 'text-[1.9rem]', s.state === 'cancelled' && 'line-through decoration-1')}>{s.roomName ? (s.roomNumber ? `${s.roomName} · N° ${s.roomNumber}` : s.roomName) : a.roomTbd}</p>
             <p className="mt-1 text-xs tracking-[0.12em] text-mist">
               {t.booking.code} {s.code}
               {PORTAL[s.source] ? ` · ${fill(a.portal, { portal: PORTAL[s.source]! })}` : ''}

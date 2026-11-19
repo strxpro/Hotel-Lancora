@@ -1,7 +1,7 @@
 import 'server-only';
 import { mutate, readDb } from '../db/store';
 import { audit } from '../events';
-import { accountGone, clearConnect, retrieveConnectStatus, stripeMode, type ConnectStatus } from './stripe';
+import { accountGone, clearConnect, hotelOwnStripe, retrieveConnectStatus, retrieveOwnStatus, stripeMode, type ConnectStatus } from './stripe';
 
 let lastCheck = 0;
 
@@ -11,7 +11,10 @@ let lastCheck = 0;
  * written only when something really changed. Covers the owner who closes Stripe's page without
  * coming back through "return", and a webhook that cannot reach a temporary address.
  */
-export async function syncConnectStatus(): Promise<void> {
+export async function syncConnectStatus(force = false): Promise<void> {
+  if (hotelOwnStripe()) return syncOwnStatus(force);
+  // back from the hotel's own keys to the platform: the panel forgets the direct account
+  if (readDb().settings.stripeConnect.direct) mutate((db) => clearConnect(db));
   const c = readDb().settings.stripeConnect;
   if (!c.accountId || c.simulated || stripeMode() === 'off') return;
   if (Date.now() - lastCheck < 60_000) return;
@@ -38,5 +41,20 @@ export async function syncConnectStatus(): Promise<void> {
   mutate((db) => {
     if (db.settings.stripeConnect.accountId !== accountId) return;
     Object.assign(db.settings.stripeConnect, { ...s, updatedAt: new Date().toISOString() });
+  });
+}
+
+/** The hotel's own Stripe account (its keys on the site): the same copy, read from the account itself. */
+async function syncOwnStatus(force: boolean): Promise<void> {
+  if (stripeMode() === 'off') return;
+  if (!force && Date.now() - lastCheck < 60_000) return;
+  lastCheck = Date.now();
+  const s = await Promise.race([retrieveOwnStatus(), new Promise<null>((r) => setTimeout(() => r(null), 3500))]).catch(() => null);
+  if (!s) return;
+  const cur = readDb().settings.stripeConnect as unknown as Record<string, unknown>;
+  const changed = cur.direct !== true || cur.accountId !== null || (Object.keys(s) as (keyof ConnectStatus)[]).some((k) => JSON.stringify(cur[k]) !== JSON.stringify(s[k]));
+  if (!changed) return;
+  mutate((db) => {
+    Object.assign(db.settings.stripeConnect, { ...s, accountId: null, simulated: false, direct: true, updatedAt: new Date().toISOString() });
   });
 }

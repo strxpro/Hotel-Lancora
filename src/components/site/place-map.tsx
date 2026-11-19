@@ -5,12 +5,10 @@ import { createPortal, flushSync } from 'react-dom';
 import { animate, AnimatePresence, motion } from 'motion/react';
 import { Car, Expand, Footprints, Hand, Minus, Navigation, Plus, Scan, Ship, X } from 'lucide-react';
 import { COAST } from '@/content/coast';
-import { EXPERIENCES, PLACE_GALLERY } from '@/content/experiences';
 import { MAP_T } from '@/lib/i18n/reviews-dict';
 import { PhotoMorph } from './photo-morph';
-import { MEDIA } from '@/content/media';
 import { cn } from '@/lib/utils';
-import { useI18n, useLenis } from './providers';
+import { useI18n, useLenis, usePlaces } from './providers';
 
 const EASE = [0.22, 0.61, 0.12, 1] as const;
 /** a quick, soft stop: wheel zoom and the glide after a flick */
@@ -107,7 +105,7 @@ const maxW = (ar: number) => Math.min(COAST.width * 1.3, (COAST.height + 900) / 
 export function PlaceMap({ hotel, active: activeProp, onSelect, tone = 'light', className, card = true, expandable = true, padBottom = 0, padLeft = 0 }: { hotel: { lat: number; lng: number; name: string }; active?: number | null; onSelect?: (i: number | null) => void; tone?: 'light' | 'dark'; className?: string; card?: boolean; expandable?: boolean; padBottom?: number; padLeft?: number }) {
   const { t, locale } = useI18n();
   const lenis = useLenis();
-  const places = EXPERIENCES;
+  const places = usePlaces();
   const [inner, setInner] = useState<number | null>(null);
   const active = activeProp !== undefined ? activeProp : inner;
   const select = useCallback((i: number | null) => (onSelect ? onSelect(i) : setInner(i)), [onSelect]);
@@ -346,7 +344,7 @@ export function PlaceMap({ hotel, active: activeProp, onSelect, tone = 'light', 
   const route = cur ? (routes?.[cur.id] ?? null) : null;
   const routeD = route ? route.coords.map(([la, ln], i) => { const q = proj(la, ln); return `${i ? 'L' : 'M'}${q.x.toFixed(2)} ${q.y.toFixed(2)}`; }).join('') : null;
   const ferry = cur?.id === 'bonifacio';
-  const gallery = cur ? (PLACE_GALLERY[cur.id] ?? [cur.image]).map((k) => ({ src: MEDIA[k].src, alt: MEDIA[k].alt })) : [];
+  const gallery = cur ? cur.gallery : [];
 
   // screen positions → clusters (no overlapping pins) and labels only where they fit
   const sx = (p: { x: number; y: number }) => ({ x: ((p.x - view.x) / view.w) * size.w, y: ((p.y - view.y) / vh) * size.h });
@@ -581,13 +579,14 @@ export function PlaceMap({ hotel, active: activeProp, onSelect, tone = 'light', 
 /** Clickable list of the places, with distance from the hotel. */
 export function PlaceList({ hotel, active, onSelect }: { hotel: { lat: number; lng: number }; active: number | null; onSelect: (i: number) => void }) {
   const { t, locale } = useI18n();
+  const places = usePlaces();
   return (
     <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-      {EXPERIENCES.map((p, i) => (
+      {places.map((p, i) => (
         <li key={p.id}>
           <button type="button" onClick={() => onSelect(i)} aria-pressed={active === i} className={cn('group flex w-full items-center gap-3 rounded-2xl border p-2 pr-3 text-left transition-colors', active === i ? 'border-navy bg-white' : 'border-line bg-white/60 hover:border-navy/40')}>
             <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-sand">
-              <Image src={MEDIA[p.image].src} alt="" fill sizes="56px" className="object-cover transition-transform duration-700 group-hover:scale-110" />
+              <Image src={p.photo.src} alt="" fill sizes="56px" className="object-cover transition-transform duration-700 group-hover:scale-110" />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold text-navy">

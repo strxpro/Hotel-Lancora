@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import Lenis from 'lenis';
 import type { Dictionary } from '@/lib/i18n/dictionaries';
 import type { Locale } from '@/lib/types';
+import type { PlaceItem } from '@/lib/places';
 import { localePath } from '@/lib/i18n/config';
 import { markHydrated } from '@/lib/intro';
 import { gsap, ScrollTrigger } from '@/lib/gsap';
@@ -93,7 +94,11 @@ function SmoothScroll({ children }: { children: React.ReactNode }) {
   return <LenisContext.Provider value={ref}>{children}</LenisContext.Provider>;
 }
 
-export function SiteProviders({ locale, dict, children }: { locale: Locale; dict: Dictionary; children: React.ReactNode }) {
+/* ---------------- places around the hotel (editable from the panel) ---------------- */
+const PlacesContext = createContext<PlaceItem[]>([]);
+export const usePlaces = () => useContext(PlacesContext);
+
+export function SiteProviders({ locale, dict, places = [], children }: { locale: Locale; dict: Dictionary; places?: PlaceItem[]; children: React.ReactNode }) {
   const [value] = useState<I18n>(() => ({ locale, t: dict, href: (p: string) => localePath(locale, p) }));
   const v = value.locale === locale ? value : { locale, t: dict, href: (p: string) => localePath(locale, p) };
   // passive effect: runs after every layout effect of the first render, so pages mounting during
@@ -101,8 +106,10 @@ export function SiteProviders({ locale, dict, children }: { locale: Locale; dict
   useEffect(() => markHydrated(), []);
   return (
     <I18nContext.Provider value={v}>
-      <VisitBeacon />
-      <SmoothScroll>{children}</SmoothScroll>
+      <PlacesContext.Provider value={places}>
+        <VisitBeacon />
+        <SmoothScroll>{children}</SmoothScroll>
+      </PlacesContext.Provider>
     </I18nContext.Provider>
   );
 }

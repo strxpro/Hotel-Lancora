@@ -44,8 +44,8 @@ export default async function RoomsPage({ params, searchParams }: Props) {
           </div>
         </div>
       </section>
-      <RoomsExplorer key={`${q.checkIn}|${q.checkOut}|${q.adults}|${q.children}`} rooms={publicCards(db, locale)} initialQuery={q} initialResults={results} today={today} cashPercent={db.settings.payments.allowCashAtHotel ? db.settings.payments.cashDiscountPercent : 0} />
-      <ReviewsSection reviews={publicReviews(db, locale).slice(0, 40)} rooms={db.rooms.filter((r) => r.status === 'available' && !r.hidden).sort((a, b) => a.sortOrder - b.sortOrder).map((r) => ({ id: r.id, number: r.numberAuto ? '' : r.number, name: localizeRoom(r, locale).t.title || r.name }))} />
+      <RoomsExplorer key={`${q.checkIn}|${q.checkOut}|${q.adults}|${q.children}`} rooms={publicCards(db, locale)} initialQuery={q} initialResults={results} today={today} cashPercent={db.settings.payments.allowCashAtHotel ? db.settings.payments.cashDiscountPercent : 0} tax={db.settings.pricing?.touristTax?.enabled ? db.settings.pricing.touristTax : null} />
+      <ReviewsSection reviews={publicReviews(db, locale).slice(0, 40)} rooms={db.rooms.filter((r) => r.status === 'available' && !r.hidden).sort((a, b) => a.sortOrder - b.sortOrder).map((r) => ({ id: r.id, number: '', name: localizeRoom(r, locale).t.title || r.name }))} />
     </>
   );
 }

@@ -88,7 +88,7 @@ export async function integrationsSnapshot() {
  * Developers → API keys. We check them with Stripe and, when the site is online (https), create
  * the webhook automatically so bookings are confirmed by Stripe itself.
  */
-export async function connectStripeAction(secretKey: string, publishableKey: string) {
+export async function connectStripeAction(secretKey: string, publishableKey: string, owner: 'hotel' | 'platform' = 'hotel') {
   return act('settings.edit', async (u) => {
     const sk = z.string().trim().regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]{20,}$/, 'La chiave segreta inizia con sk_test_ (prova) o sk_live_').parse(secretKey);
     const pk = z.string().trim().regex(/^pk_(test|live)_[A-Za-z0-9]{20,}$/, 'La chiave pubblicabile inizia con pk_test_ o pk_live_').parse(publishableKey);
@@ -110,8 +110,10 @@ export async function connectStripeAction(secretKey: string, publishableKey: str
     const linkedId = linked.accountId && !linked.simulated ? linked.accountId : null;
     const gone = linkedId ? await client.accounts.retrieve(linkedId).then(() => false, (e) => accountGone(e)) : false;
     const prev = readIntegrations().stripe;
-    writeIntegrations({ stripe: { secretKey: sk, publishableKey: pk, accountName, ...(prev?.secretKey === sk ? { webhookId: prev.webhookId, connectWebhookId: prev.connectWebhookId } : {}) } });
-    if (gone)
+    writeIntegrations({ stripe: { secretKey: sk, publishableKey: pk, accountName, owner: owner === 'platform' ? 'platform' : 'hotel', ...(prev?.secretKey === sk ? { webhookId: prev.webhookId, connectWebhookId: prev.connectWebhookId } : {}) } });
+    // the hotel's own account: no connected account in between (an old one is forgotten, it stays on Stripe)
+    if (owner !== 'platform') mutate((db) => { if (db.settings.stripeConnect.accountId && !db.settings.stripeConnect.simulated) clearConnect(db); });
+    else if (gone)
       mutate((db) => {
         if (db.settings.stripeConnect.accountId !== linkedId) return;
         clearConnect(db);
@@ -120,8 +122,25 @@ export async function connectStripeAction(secretKey: string, publishableKey: str
     // Stripe's notifications (payments + the hotel's account) to this site's address, set up by itself
     const { ensureStripeWebhook } = await import('@/server/payments/webhook-setup');
     const webhookId = (await ensureStripeWebhook(true).catch(() => false)) ? readIntegrations().stripe?.webhookId : undefined;
-    mutate((db) => audit(db, u.name, 'integration', 'stripe', null, `Stripe collegato (${live ? 'live' : 'test'}) · ${accountName}${webhookId ? ' · webhook creato' : ''}`));
+    // the hotel's own account: the Pagamenti page shows it at once (status, IBAN, payout calendar)
+    const { syncConnectStatus } = await import('@/server/payments/connect-sync');
+    await syncConnectStatus(true).catch(() => null);
+    mutate((db) => audit(db, u.name, 'integration', 'stripe', null, `Stripe collegato (${live ? 'live' : 'test'}) · ${accountName} · ${owner === 'platform' ? 'conto del sito (l’hotel si collega con “Collega Stripe”)' : 'conto dell’hotel (incassi diretti)'}${webhookId ? ' · webhook creato' : ''}`));
     return { accountName, webhook: Boolean(webhookId), live };
+  });
+}
+
+/** Whose account the keys already on the site open (no new keys): the hotel's own or the site's platform. */
+export async function setStripeOwnerAction(owner: 'hotel' | 'platform') {
+  return act('settings.edit', async (u) => {
+    const prev = readIntegrations().stripe;
+    if (!prev) throw new UserError('Prima collega le chiavi Stripe.');
+    const who = owner === 'platform' ? 'platform' : 'hotel';
+    writeIntegrations({ stripe: { ...prev, owner: who } });
+    if (who === 'hotel') mutate((db) => { if (db.settings.stripeConnect.accountId) clearConnect(db); });
+    const { syncConnectStatus } = await import('@/server/payments/connect-sync');
+    await syncConnectStatus(true).catch(() => null);
+    mutate((db) => audit(db, u.name, 'integration', 'stripe', null, who === 'hotel' ? `Stripe: conto dell’hotel (${prev.accountName ?? '—'}), incassi diretti` : `Stripe: conto del sito (${prev.accountName ?? '—'}), l’hotel si collega con “Collega Stripe”`));
   });
 }
 

@@ -13,6 +13,7 @@ import { ChatWidget } from '@/components/site/chat-widget';
 import { LegalDialog } from '@/components/site/legal-dialog';
 import { cancelText, cancelTitle } from '@/lib/cancellation';
 import { BackToTop } from '@/components/site/back-to-top';
+import { publicPlaces } from '@/server/places';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,8 @@ export default async function LocaleLayout({ children, params }: { children: Rea
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
-  const { hotel, payments, demoMode } = readDb().settings;
+  const db = readDb();
+  const { hotel, payments, demoMode } = db.settings;
   const footerHotel = {
     name: hotel.name,
     stars: hotel.stars,
@@ -47,7 +49,7 @@ export default async function LocaleLayout({ children, params }: { children: Rea
     checkOutBy: hotel.checkOutBy,
   };
   return (
-    <SiteProviders locale={locale} dict={dict}>
+    <SiteProviders locale={locale} dict={dict} places={publicPlaces(db)}>
       <TransitionProvider>
         <Preloader />
         <Header phone={hotel.phone} email={hotel.email} />

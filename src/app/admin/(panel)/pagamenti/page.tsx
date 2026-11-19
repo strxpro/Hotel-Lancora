@@ -1,6 +1,7 @@
 import { requirePageUser } from '@/server/auth/guard';
 import { readDb } from '@/server/db/store';
-import { stripeMode } from '@/server/payments/stripe';
+import { platformReady, stripeMode } from '@/server/payments/stripe';
+import { OWNER_ID } from '@/server/setup';
 import { syncConnectStatus } from '@/server/payments/connect-sync';
 import { addDays, fmtDate, startOfMonth, todayISO } from '@/lib/dates';
 import { Badge, PageHeader } from '@/components/admin/ui';
@@ -19,7 +20,7 @@ const NOTICE: Record<string, { tone: 'green' | 'gold' | 'red'; text: string }> =
 
 /** Payments, as simple as possible: the money, the account, how guests pay (saved by itself), the movements. */
 export default async function PaymentsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  await requirePageUser('payments.manage');
+  const user = await requirePageUser('payments.manage');
   const sp = await searchParams;
   await syncConnectStatus();
   const db = readDb();
@@ -58,6 +59,8 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         <AccountCard
           mode={stripeMode()}
           demo={process.env.DEMO_MODE !== 'false'}
+          platformOk={await platformReady()}
+          support={user.role === 'admin' && user.id !== OWNER_ID}
           c={{
             accountId: c.accountId,
             simulated: c.simulated,
@@ -71,6 +74,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
             bankLast4: c.bankLast4,
             requirements: c.requirements,
             autoInstant: c.autoInstant ?? false,
+            direct: c.direct === true,
             updatedAt: c.updatedAt,
           }}
         />

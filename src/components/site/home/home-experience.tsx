@@ -8,6 +8,7 @@ import { onOpening } from '@/lib/intro';
 import { useI18n, useLenis, useLiveVersion, scrollToTarget } from '../providers';
 import { Hero } from './hero';
 import { RoomsSection } from '../rooms/rooms-section';
+import type { TouristTax } from '@/lib/tourist-tax';
 import { SearchBar } from '../booking/search-bar';
 import { queryToParams, type StayQuery } from '../booking/query';
 
@@ -22,7 +23,7 @@ import { queryToParams, type StayQuery } from '../booking/query';
  *   4. parks in its own space just above the footer, so it never hides the footer.
  * One element, never re-mounted: focus and open calendars survive every phase.
  */
-export function HomeExperience({ rooms, initialQuery, initialResults, today, cashPercent = 0, children }: { rooms: RoomCardData[]; initialQuery: StayQuery; initialResults: AvailabilityResponse | null; today: string; cashPercent?: number; children?: React.ReactNode }) {
+export function HomeExperience({ rooms, initialQuery, initialResults, today, cashPercent = 0, tax = null, children }: { rooms: RoomCardData[]; initialQuery: StayQuery; initialResults: AvailabilityResponse | null; today: string; cashPercent?: number; tax?: TouristTax | null; children?: React.ReactNode }) {
   const { locale } = useI18n();
   const router = useRouter();
   const lenis = useLenis();
@@ -242,6 +243,7 @@ export function HomeExperience({ rooms, initialQuery, initialResults, today, cas
             results={results}
             query={query}
             cashPercent={cashPercent}
+            tax={tax}
             onReset={reset}
             onChangeDates={() => scrollToTarget(lenis.current, '#hero', 0)}
             onPickDates={(checkIn, checkOut) => {
@@ -252,7 +254,7 @@ export function HomeExperience({ rooms, initialQuery, initialResults, today, cas
           />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rooms, results, query, cashPercent],
+    [rooms, results, query, cashPercent, tax],
   );
 
   return (

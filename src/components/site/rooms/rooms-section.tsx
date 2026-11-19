@@ -1,10 +1,12 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { CalendarSearch, Columns2, LayoutGrid, Plus, SlidersHorizontal, Star, X } from 'lucide-react';
+import { CalendarSearch, Columns2, LayoutGrid, Plus, Rows3, SlidersHorizontal, Star, X } from 'lucide-react';
 import type { AvailabilityResponse, RoomCardData, RoomResult } from '@/lib/room-card';
-import type { FloorKey, RoomType } from '@/lib/types';
+import type { FloorKey, Locale, RoomType } from '@/lib/types';
+import type { TouristTax } from '@/lib/tourist-tax';
+import { TaxNote } from './tax-note';
 import { amenityLabel } from '@/content/amenities';
 import { fmtDate } from '@/lib/dates';
 import { fill, plural } from '@/lib/i18n/config';
@@ -21,7 +23,8 @@ const PAGE = 10;
 const EASE = [0.22, 0.61, 0.12, 1] as const;
 const FEATURES = ['vista_mare', 'balcone', 'patio', 'divano_letto', 'culla', 'salotto', 'insonorizzata', 'accessibile'];
 type Sort = 'recommended' | 'priceAsc' | 'priceDesc' | 'popular';
-type View = 'grid' | 'masonry';
+type View = 'grid' | 'masonry' | 'list';
+const VIEW_LIST: Record<Locale, string> = { it: 'Elenco', en: 'List', pl: 'Lista', de: 'Liste', fr: 'Liste', es: 'Lista' };
 interface Filters {
   price: [number, number] | null;
   guests: number | null;
@@ -40,6 +43,7 @@ export function RoomsSection({
   onReset,
   onChangeDates,
   cashPercent = 0,
+  tax = null,
 }: {
   rooms: RoomCardData[];
   results: AvailabilityResponse | null;
@@ -48,6 +52,8 @@ export function RoomsSection({
   onReset: () => void;
   onChangeDates: () => void;
   cashPercent?: number;
+  /** the town's tax, shown under the filters (not included in the prices) */
+  tax?: TouristTax | null;
 }) {
   const { t, locale } = useI18n();
   const desktop = useIsDesktop();
@@ -57,6 +63,19 @@ export function RoomsSection({
   const [view, setView] = useState<View>('grid');
   const [shown, setShown] = useState(PAGE);
   const [panel, setPanel] = useState(false);
+  const popRef = useRef<HTMLDivElement>(null);
+  // the filters popover closes with a click outside it or Esc (desktop; the phone has its sheet)
+  useEffect(() => {
+    if (!panel || !desktop) return;
+    const down = (e: PointerEvent) => { if (popRef.current && !popRef.current.contains(e.target as Node)) setPanel(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setPanel(false); };
+    document.addEventListener('pointerdown', down);
+    document.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('pointerdown', down);
+      document.removeEventListener('keydown', key);
+    };
+  }, [panel, desktop]);
 
   const base: RoomResult[] = useMemo(() => (results ? results.results : rooms.map((room) => ({ room, available: true, nights: 0, total: 0, averageNight: 0 }))), [results, rooms]);
   const priceOf = (r: RoomResult) => (results ? r.averageNight : r.room.basePrice);
@@ -108,18 +127,18 @@ export function RoomsSection({
     ...(filters.rated ? [{ key: 'r', label: REVIEWS_T[locale].minRating, clear: () => setFilters((f) => ({ ...f, rated: false })) }] : []),
   ];
 
-  const chip = (on: boolean) => cn('rounded-full border px-4 py-2 text-[0.8rem] transition-colors duration-300', on ? 'border-navy bg-navy text-ivory' : 'border-line bg-white text-navy hover:border-navy/50');
+  const chip = (on: boolean) => cn('rounded-full border px-3 py-1.5 text-[0.75rem] transition-colors duration-300', on ? 'border-navy bg-navy text-ivory' : 'border-line bg-white text-navy hover:border-navy/50');
   const preview = base.filter((r) => match(r, filters)).length;
 
   const panelBody = (
-    <div className="grid gap-8 md:grid-cols-12">
-      {results && (
-        <div className="md:col-span-5">
-          <p className="label">{t.rooms.f.price}</p>
+    <div className="space-y-5">
+      {bounds[1] > bounds[0] && (
+        <div>
+          <p className="label">{results ? t.rooms.f.price : `${t.rooms.f.price} · ${t.rooms.perNight}`}</p>
           <PriceHistogram points={base.map((r) => ({ price: priceOf(r), weight: r.room.popularity }))} bounds={bounds} value={range} onChange={(v) => setFilters((f) => ({ ...f, price: v }))} />
         </div>
       )}
-      <div className={cn('space-y-6', results ? 'md:col-span-7' : 'md:col-span-12')}>
+      <div className="space-y-5">
         <div>
           <p className="label">{t.rooms.f.guests}</p>
           <div className="flex flex-wrap gap-2">
@@ -149,7 +168,7 @@ export function RoomsSection({
             ))}
           </div>
         </div>
-        <div className="grid gap-6 sm:grid-cols-2">
+        <div className="space-y-5">
           <div>
             <p className="label">{t.rooms.f.floor}</p>
             <div className="flex flex-wrap gap-2">
@@ -172,11 +191,11 @@ export function RoomsSection({
           </div>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-3 border-t border-line pt-5 md:col-span-12">
-        <button type="button" onClick={() => setFilters(EMPTY)} className="link-u text-xs font-semibold uppercase tracking-[0.18em] text-mist hover:text-navy">
+      <div className="flex items-center justify-between gap-3 border-t border-line pt-4">
+        <button type="button" onClick={() => setFilters(EMPTY)} className="link-u text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-mist hover:text-navy">
           {t.rooms.f.reset}
         </button>
-        <button type="button" onClick={() => setPanel(false)} className="btn btn-navy h-12 min-h-0 px-6">
+        <button type="button" onClick={() => setPanel(false)} className="btn btn-navy h-10 min-h-0 px-5 text-[0.66rem]">
           {plural(locale, preview, t.rooms.f.show)}
         </button>
       </div>
@@ -231,11 +250,32 @@ export function RoomsSection({
         {base.length > 0 && (
           <div className="mt-10 md:mt-14">
             <div className="flex flex-wrap items-center gap-2.5">
-              <button type="button" onClick={() => setPanel((p) => !p)} aria-expanded={panel} className={cn('flex h-12 items-center gap-2.5 rounded-full border pl-4 pr-3 text-sm font-semibold transition-colors', panel || activeCount ? 'border-navy bg-navy text-ivory' : 'border-line bg-white text-navy hover:border-navy/50')}>
-                <SlidersHorizontal className="h-4 w-4" />
-                {t.rooms.f.title}
-                <span className={cn('flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[0.7rem]', activeCount ? 'bg-gold text-navy-3' : 'bg-navy/[0.07] text-navy')}>{activeCount || <Plus className="h-3 w-3" />}</span>
-              </button>
+              <div ref={popRef} className="relative">
+                <button type="button" onClick={() => setPanel((p) => !p)} aria-expanded={panel} className={cn('flex h-12 items-center gap-2.5 rounded-full border pl-4 pr-3 text-sm font-semibold transition-colors', panel || activeCount ? 'border-navy bg-navy text-ivory' : 'border-line bg-white text-navy hover:border-navy/50')}>
+                  <SlidersHorizontal className="h-4 w-4" />
+                  {t.rooms.f.title}
+                  <span className={cn('flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[0.7rem]', activeCount ? 'bg-gold text-navy-3' : 'bg-navy/[0.07] text-navy')}>{activeCount || <Plus className="h-3 w-3" />}</span>
+                </button>
+                {desktop && (
+                  <AnimatePresence>
+                    {panel && (
+                      <motion.div
+                        role="dialog"
+                        aria-label={t.rooms.f.title}
+                        data-lenis-prevent
+                        initial={{ opacity: 0, y: -8, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                        transition={{ duration: 0.28, ease: EASE }}
+                        style={{ transformOrigin: 'top left' }}
+                        className="absolute left-0 top-full z-40 mt-2.5 max-h-[min(70vh,40rem)] w-[25rem] overflow-y-auto rounded-[1.4rem] border border-line bg-white p-5 shadow-[0_34px_80px_-36px_rgba(16,40,61,0.55)]"
+                      >
+                        {panelBody}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                )}
+              </div>
               <AnimatePresence initial={false}>
                 {chips.map((c) => (
                   <motion.button key={c.key} type="button" layout initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} onClick={c.clear} className="flex h-9 items-center gap-1.5 rounded-full bg-sand-2 pl-3.5 pr-2 text-xs text-navy hover:bg-sand">
@@ -247,29 +287,28 @@ export function RoomsSection({
               <div className="ml-auto flex items-center gap-2">
                 <span className="hidden text-xs text-mist sm:block">{fill(t.rooms.f.of, { shown: Math.min(shown, list.length), total: list.length })}</span>
                 <ListSelect value={sort} onChange={setSort} label={t.rooms.f.sort} options={(results ? (['recommended', 'priceAsc', 'priceDesc', 'popular'] as Sort[]) : (['recommended', 'popular'] as Sort[])).map((s) => ({ value: s, label: t.rooms.f[s] }))} />
-                <div role="radiogroup" aria-label={`${t.rooms.f.grid} / ${t.rooms.f.masonry}`} className="relative flex h-12 rounded-full border border-line bg-white p-1">
-                  {(['grid', 'masonry'] as View[]).map((v) => (
-                    <button key={v} type="button" role="radio" aria-checked={view === v} aria-label={t.rooms.f[v]} title={t.rooms.f[v]} onClick={() => setView(v)} className={cn('relative z-[1] flex w-10 items-center justify-center rounded-full transition-colors', view === v ? 'text-ivory' : 'text-mist hover:text-navy')}>
-                      {view === v && <motion.span layoutId="view-pill" className="absolute inset-0 -z-[1] rounded-full bg-navy" transition={{ type: 'spring', stiffness: 420, damping: 36 }} />}
-                      {v === 'grid' ? <LayoutGrid className="h-4 w-4" /> : <Columns2 className="h-4 w-4" />}
-                    </button>
-                  ))}
+                <div role="radiogroup" aria-label={`${t.rooms.f.grid} / ${t.rooms.f.masonry} / ${VIEW_LIST[locale]}`} className="relative flex h-12 rounded-full border border-line bg-white p-1">
+                  {(['grid', 'masonry', 'list'] as View[]).map((v) => {
+                    const label = v === 'list' ? VIEW_LIST[locale] : t.rooms.f[v];
+                    return (
+                      <button key={v} type="button" role="radio" aria-checked={view === v} aria-label={label} title={label} onClick={() => setView(v)} className={cn('relative z-[1] flex w-10 items-center justify-center rounded-full transition-colors', view === v ? 'text-ivory' : 'text-mist hover:text-navy')}>
+                        {view === v && <motion.span layoutId="view-pill" className="absolute inset-0 -z-[1] rounded-full bg-navy" transition={{ type: 'spring', stiffness: 420, damping: 36 }} />}
+                        {v === 'grid' ? <LayoutGrid className="h-4 w-4" /> : v === 'masonry' ? <Columns2 className="h-4 w-4" /> : <Rows3 className="h-4 w-4" />}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
-            {desktop && (
-              <AnimatePresence initial={false}>
-                {panel && (
-                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.5, ease: EASE }} className="overflow-hidden">
-                    <div className="mt-4 rounded-[1.75rem] border border-line bg-white p-6 shadow-[0_30px_70px_-50px_rgba(16,40,61,0.5)] md:p-8">{panelBody}</div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            )}
+            {tax && <TaxNote tax={tax} className="mt-4" />}
           </div>
         )}
 
-        {view === 'grid' ? (
+        {view === 'list' ? (
+          <div key={`list-${sort}`} className="mt-8 flex flex-col gap-5 md:gap-6">
+            <AnimatePresence mode="popLayout" initial={false}>{visible.map((r, i) => card(r, i))}</AnimatePresence>
+          </div>
+        ) : view === 'grid' ? (
           <div key={`grid-${sort}`} className="mt-8 grid gap-5 sm:grid-cols-2 md:gap-6 xl:grid-cols-3">
             <AnimatePresence mode="popLayout" initial={false}>{visible.map((r, i) => card(r, i))}</AnimatePresence>
           </div>

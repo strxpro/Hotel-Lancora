@@ -26,7 +26,8 @@ test('rooms without numbers: the site numbers them inside the panel, guests neve
   assert.deepEqual([a2.number, a2.numberAuto, a2.name], ['1', true, 'Maestrale vista mare']);
   const cards = publicCards(readDb(), 'it');
   assert.equal(cards.find((x) => x.id === a.id)!.number, '');
-  assert.equal(cards.find((x) => x.id === c.id)!.number, '12');
+  // a typed number is only for the hotel too: guests see the name
+  assert.equal(cards.find((x) => x.id === c.id)!.number, '');
   // a typed number still has to be unique
   assert.throws(() => saveRoom(room('Doppia', '12'), 'test'), /12/);
 });

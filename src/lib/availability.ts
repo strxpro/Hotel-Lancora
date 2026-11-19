@@ -174,15 +174,23 @@ export function searchAvailability(db: DB, q: SearchQuery, now: Date = new Date(
 export function suggestAlternatives(db: DB, q: SearchQuery, now: Date = new Date(), today?: string): { checkIn: string; checkOut: string; count: number; from: number }[] {
   const nights = diffDays(q.checkIn, q.checkOut);
   const out: { checkIn: string; checkOut: string; count: number; from: number }[] = [];
-  for (const shift of [1, -1, 2, -2, 3, -3, 5, 7, 10, 14]) {
-    const checkIn = addDays(q.checkIn, shift);
-    if (today && checkIn < today) continue;
-    const checkOut = addDays(checkIn, nights);
+  const tryStay = (checkIn: string, checkOut: string) => {
+    if ((today && checkIn < today) || out.some((o) => o.checkIn === checkIn && o.checkOut === checkOut)) return;
     const res = searchAvailability(db, { ...q, checkIn, checkOut }, now).filter((r) => r.available);
     if (res.length) out.push({ checkIn, checkOut, count: res.length, from: Math.min(...res.map((r) => r.quote.averageNight)) });
+  };
+  // the same nights a few days earlier or later (nearest first), up to three weeks away
+  for (const shift of [1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 7, -7, 10, 14, 21]) {
+    tryStay(addDays(q.checkIn, shift), addDays(q.checkIn, shift + nights));
     if (out.length >= 3) break;
   }
-  return out.sort((a, b) => a.checkIn.localeCompare(b.checkIn));
+  // or a shorter stay on the same arrival day (the last nights are the busy ones)
+  for (let n = nights - 1; n >= 1 && out.length < 4; n--) {
+    const before = out.length;
+    tryStay(q.checkIn, addDays(q.checkIn, n));
+    if (out.length > before) break;
+  }
+  return out.sort((a, b) => a.checkIn.localeCompare(b.checkIn) || b.checkOut.localeCompare(a.checkOut));
 }
 
 /** Occupied nights of a room in a window — used by the room page calendar. */

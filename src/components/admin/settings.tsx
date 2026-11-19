@@ -1,12 +1,13 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Check, Plus, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
 import type { AuditEntry, Settings } from '@/lib/types';
 import { fmtDateTime } from '@/lib/dates';
 import { Button, Card, Dialog, Field, Toggle, useAction } from './ui';
 import { NiceSelect } from './nice-select';
-import { changePasswordAction, saveFaqAction, saveFloorsAction, saveHotelAction, saveServicesAction } from '@/app/admin/actions/settings';
+import { changePasswordAction, saveFaqAction, saveFloorsAction, saveHotelAction, saveServicesAction, saveStayTimesAction } from '@/app/admin/actions/settings';
+import { cn } from '@/lib/utils';
 import { resetDemo, startRealDataAction } from '@/app/admin/actions/misc';
 
 export function HotelForm({ hotel }: { hotel: Settings['hotel'] }) {
@@ -48,15 +49,6 @@ export function HotelForm({ hotel }: { hotel: Settings['hotel'] }) {
         </Field>
         <Field label="Partita IVA">
           <input className="field" value={h.vat ?? ''} onChange={(e) => s('vat', e.target.value)} />
-        </Field>
-        <Field label="Check-in dalle">
-          <input className="field" type="time" value={h.checkInFrom} onChange={(e) => s('checkInFrom', e.target.value)} />
-        </Field>
-        <Field label="Check-in fino alle">
-          <input className="field" type="time" value={h.checkInTo} onChange={(e) => s('checkInTo', e.target.value)} />
-        </Field>
-        <Field label="Check-out entro">
-          <input className="field" type="time" value={h.checkOutBy} onChange={(e) => s('checkOutBy', e.target.value)} />
         </Field>
         <Field label="Link Google Reviews">
           <input className="field" value={h.googleReviewUrl} placeholder="https://g.page/r/…" onChange={(e) => s('googleReviewUrl', e.target.value)} />
@@ -301,5 +293,78 @@ export function GoLiveCard({ counts }: { counts: DemoCounts }) {
         </Field>
       </Dialog>
     </Card>
+  );
+}
+
+/**
+ * Arrivo e partenza: three big hours the owner changes with one tap, saved by themselves, and the
+ * same box the guests see on the booking page (like Booking), so it is clear where it shows.
+ */
+export function StayTimesCard({ hotel, tax }: { hotel: Settings['hotel']; tax?: { enabled: boolean; amount: number } | null }) {
+  const [t, setT] = useState({ checkInFrom: hotel.checkInFrom, checkInTo: hotel.checkInTo, checkOutBy: hotel.checkOutBy });
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const timer = useRef<number | null>(null);
+  const save = (next: typeof t) => {
+    setT(next);
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(async () => {
+      setState('saving');
+      const r = await saveStayTimesAction(next).catch(() => null);
+      if (r?.ok) {
+        setState('saved');
+        setError(null);
+      } else {
+        setState('error');
+        setError(r && !r.ok ? r.error : 'Non salvato: riprova.');
+      }
+    }, 650);
+  };
+  const tiles = [
+    { k: 'checkInFrom' as const, label: 'Check-in dalle', hint: 'Da che ora la camera è pronta' },
+    { k: 'checkInTo' as const, label: 'Check-in fino alle', hint: 'Ultimo orario per arrivare' },
+    { k: 'checkOutBy' as const, label: 'Check-out entro le', hint: 'Quando la camera va lasciata' },
+  ];
+  return (
+    <div className="grid gap-6 [&>*]:min-w-0 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+      <Card title="Orari di arrivo e partenza" action={<span className={cn('text-xs font-semibold', state === 'error' ? 'text-terracotta' : 'text-mist')}>{state === 'saving' ? 'Salvo…' : state === 'saved' ? '✓ Salvato' : state === 'error' ? 'Non salvato' : 'Si salva da solo'}</span>}>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {tiles.map((x, i) => (
+            <motion.label key={x.k} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }} className="group flex cursor-pointer flex-col rounded-2xl border border-line bg-ivory p-4 transition-colors focus-within:border-navy hover:border-navy/50">
+              <span className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-mist">{x.label}</span>
+              <input type="time" step={900} value={t[x.k]} onChange={(e) => e.target.value && save({ ...t, [x.k]: e.target.value })} className="serif mt-1 w-full bg-transparent text-[2.2rem] leading-none text-navy outline-none" aria-label={x.label} />
+              <span className="mt-2 text-[0.72rem] leading-snug text-mist">{x.hint}</span>
+            </motion.label>
+          ))}
+        </div>
+        {error && <p className="mt-3 text-sm text-terracotta">{error}</p>}
+        <p className="mt-4 text-xs leading-relaxed text-mist">Gli orari compaiono nella pagina di pagamento, nell’email di conferma, nel piè di pagina del sito e nelle risposte del chatbot.</p>
+      </Card>
+      <Card title="Così lo vedono gli ospiti">
+        <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-line bg-white">
+          {[
+            ['Check-in', 'sab 12 lug 2026', `dalle ${t.checkInFrom} alle ${t.checkInTo}`],
+            ['Check-out', 'lun 14 lug 2026', `entro le ${t.checkOutBy}`],
+          ].map(([l, d, h], i) => (
+            <div key={l} className={cn('px-4 py-3.5', i === 1 && 'border-l border-line')}>
+              <p className="text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-mist">{l}</p>
+              <p className="mt-1 text-[0.95rem] font-semibold text-navy">{d}</p>
+              <motion.p key={h} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="mt-1 text-[0.78rem] text-charcoal/75">
+                🕑 {h}
+              </motion.p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-mist">Esempio con date di prova: sul sito ci sono le date scelte dall’ospite.</p>
+        <a href="/admin/prezzi#tassa" className="mt-4 flex items-center gap-3 rounded-2xl border border-line bg-ivory px-4 py-3 transition-colors hover:border-navy">
+          <span className="text-xl" aria-hidden="true">🏛️</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-navy">Tassa di soggiorno</span>
+            <span className="block text-xs text-mist">{tax?.enabled ? `${tax.amount.toLocaleString('it-IT', { minimumFractionDigits: 2 })} € per adulto a notte · si cambia in Prezzi` : 'Spenta · si accende in Prezzi → Tariffe e sconti'}</span>
+          </span>
+          <span className="text-xs font-semibold text-navy">Apri →</span>
+        </a>
+      </Card>
+    </div>
   );
 }

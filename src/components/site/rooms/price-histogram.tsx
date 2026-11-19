@@ -1,7 +1,7 @@
 'use client';
 import { useMemo } from 'react';
 import { motion } from 'motion/react';
-import { money } from '@/lib/utils';
+import { cn, money } from '@/lib/utils';
 import { useI18n } from '../providers';
 
 export interface PricePoint {
@@ -16,33 +16,35 @@ export interface PricePoint {
 export function PriceHistogram({ points, bounds, value, onChange }: { points: PricePoint[]; bounds: [number, number]; value: [number, number]; onChange: (v: [number, number]) => void }) {
   const { t, locale } = useI18n();
   const [lo, hi] = bounds;
-  const BUCKETS = 18;
-  const step = Math.max(1, (hi - lo) / BUCKETS);
-  const bars = useMemo(() => {
-    const b = Array.from({ length: BUCKETS }, () => 0);
-    for (const p of points) {
-      const i = Math.min(BUCKETS - 1, Math.max(0, Math.floor((p.price - lo) / step)));
-      b[i]! += Math.max(1, p.weight);
-    }
-    const max = Math.max(1, ...b);
-    return b.map((v) => v / max);
-  }, [points, lo, step]);
-  const pct = (v: number) => ((v - lo) / Math.max(1, hi - lo)) * 100;
+  const BUCKETS = 36;
   const span = Math.max(1, hi - lo);
+  const step = span / BUCKETS;
+  // a smooth hill, not jagged blocks: every price spreads over its neighbours (Gaussian kernel), so
+  // the tallest bar is where most guests book and the height falls off gently on both sides
+  const bars = useMemo(() => {
+    const h = Math.max(span / 9, 4);
+    const b = Array.from({ length: BUCKETS }, (_, i) => {
+      const x = lo + (i + 0.5) * step;
+      return points.reduce((s, p) => s + (1 + Math.max(0, p.weight)) * Math.exp(-0.5 * ((x - p.price) / h) ** 2), 0);
+    });
+    const max = Math.max(1e-9, ...b);
+    return b.map((v) => v / max);
+  }, [points, lo, step, span]);
+  const pct = (v: number) => ((v - lo) / span) * 100;
 
   return (
     <div>
-      <div className="relative flex h-24 items-end gap-[3px] px-2.5" aria-hidden="true">
+      <div className="relative flex h-20 items-end gap-[2px] px-2.5" aria-hidden="true">
         {bars.map((h, i) => {
           const from = lo + i * step;
           const inside = from + step >= value[0] && from <= value[1];
           return (
             <motion.span
               key={i}
-              className={inside ? 'flex-1 rounded-t-md bg-navy' : 'flex-1 rounded-t-md bg-sand'}
+              className={cn('flex-1 rounded-t-[3px] transition-colors duration-300', inside ? 'bg-navy' : 'bg-sand')}
               initial={{ height: 0 }}
-              animate={{ height: `${Math.max(6, h * 100)}%` }}
-              transition={{ duration: 0.7, delay: i * 0.02, ease: [0.22, 0.61, 0.12, 1] }}
+              animate={{ height: `${Math.max(4, h * 100)}%` }}
+              transition={{ duration: 0.8, delay: i * 0.012, ease: [0.22, 0.61, 0.12, 1] }}
             />
           );
         })}
@@ -71,15 +73,15 @@ export function PriceHistogram({ points, bounds, value, onChange }: { points: Pr
           className="range-thumb absolute inset-0 w-full"
         />
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-3">
+      <div className="mt-2 grid grid-cols-2 gap-2">
         {([0, 1] as const).map((i) => (
-          <div key={i} className="rounded-2xl border border-line bg-white px-4 py-2.5">
-            <p className="text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-mist">{i ? t.rooms.f.max : t.rooms.f.min}</p>
-            <p className="text-[1.05rem] text-navy">{money(value[i], locale)}</p>
+          <div key={i} className="rounded-xl border border-line bg-white px-3 py-2">
+            <p className="text-[0.56rem] font-semibold uppercase tracking-[0.18em] text-mist">{i ? t.rooms.f.max : t.rooms.f.min}</p>
+            <p className="text-[0.95rem] text-navy">{money(value[i], locale)}</p>
           </div>
         ))}
       </div>
-      <p className="mt-3 text-xs text-mist">{t.rooms.f.priceHint}</p>
+      <p className="mt-2 text-[0.7rem] leading-snug text-mist">{t.rooms.f.priceHint}</p>
     </div>
   );
 }

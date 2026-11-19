@@ -4,12 +4,10 @@ import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, ArrowRight, Car, Footprints, MapPin, Map as MapIcon, Navigation, Ship, X } from 'lucide-react';
-import { EXPERIENCES, PLACE_GALLERY } from '@/content/experiences';
 import { COAST } from '@/content/coast';
-import { MEDIA } from '@/content/media';
 import { EXTRA_T, MAP_T } from '@/lib/i18n/reviews-dict';
 import { cn } from '@/lib/utils';
-import { useI18n, useIsDesktop, useLenis } from '../providers';
+import { useI18n, useIsDesktop, useLenis, usePlaces } from '../providers';
 import { SplitHeading } from '../motion-kit';
 import { PhotoMorph } from '../photo-morph';
 import { PlaceMap, directionsUrl, fmtKm, km, useRoutes, useTown } from '../place-map';
@@ -26,7 +24,7 @@ type Hotel = { lat: number; lng: number; name: string };
 export function ExploreSection({ lat, lng, name, verified }: { lat: number; lng: number; name: string; verified: boolean }) {
   const { t, locale } = useI18n();
   const x = EXTRA_T[locale];
-  const places = EXPERIENCES;
+  const places = usePlaces();
   const hotel = { lat, lng, name };
   // origin = the card the map grew from (it shrinks back into it); current = the place shown
   const [origin, setOrigin] = useState<string | null>(null);
@@ -75,8 +73,8 @@ export function ExploreSection({ lat, lng, name, verified }: { lat: number; lng:
 function PlaceCard({ i, big, onOpen }: { i: number; big: boolean; onOpen: () => void }) {
   const { t, locale } = useI18n();
   const x = EXTRA_T[locale];
-  const p = EXPERIENCES[i]!;
-  const m = MEDIA[p.image];
+  const p = usePlaces()[i]!;
+  const m = p.photo;
   return (
     <motion.article
       layoutId={`place-${p.id}`}
@@ -117,6 +115,7 @@ function MapTeaser({ hotel, onOpen, title, sub }: { hotel: Hotel; onOpen: () => 
   const pr = (la: number, ln: number) => ({ x: (ln - COAST.bounds.minLon) * COS * K, y: (COAST.bounds.maxLat - la) * K });
   const h = pr(hotel.lat, hotel.lng);
   const town = useTown();
+  const places = usePlaces();
   return (
     <motion.article layoutId="place-all" transition={MORPH} style={{ borderRadius: 28 }} className="group absolute inset-0 overflow-hidden bg-[#dfeaee] text-navy">
       <motion.svg layout transition={MORPH} viewBox={`${h.x - 50} ${h.y - 46} 150 64`} preserveAspectRatio="xMidYMid slice" className="absolute inset-0 h-full w-full transition-transform duration-[1.4s] ease-[var(--ease-lux)] group-hover:scale-[1.04]" aria-hidden="true">
@@ -131,7 +130,7 @@ function MapTeaser({ hotel, onOpen, title, sub }: { hotel: Hotel; onOpen: () => 
             <path d={town.buildings} fill="#e2cfae" />
           </g>
         )}
-        {EXPERIENCES.map((p, i) => {
+        {places.map((p, i) => {
           const q = pr(p.lat, p.lng);
           return (
             <g key={p.id}>
@@ -167,9 +166,9 @@ function PlaceOverlay({ layoutKey, hotel, current, setCurrent, onClose }: { layo
   const desktop = useIsDesktop();
   const routes = useRoutes();
   const [ready, setReady] = useState(false);
-  const places = EXPERIENCES;
+  const places = usePlaces();
   const cur = current !== null ? places[current]! : null;
-  const coverKey = layoutKey === 'all' ? null : (places.find((p) => p.id === layoutKey)?.image ?? null);
+  const cover = layoutKey === 'all' ? null : (places.find((p) => p.id === layoutKey)?.photo.src ?? null);
 
   useEffect(() => {
     lenis.current?.stop();
@@ -198,7 +197,7 @@ function PlaceOverlay({ layoutKey, hotel, current, setCurrent, onClose }: { layo
   const dist = cur ? km(hotel, cur) : 0;
   const mode = route?.mode ?? (dist < 1.6 ? 'foot' : 'car');
   const ferry = cur?.id === 'bonifacio';
-  const gallery = cur ? (PLACE_GALLERY[cur.id] ?? [cur.image]).map((k) => ({ src: MEDIA[k].src, alt: MEDIA[k].alt })) : [];
+  const gallery = cur ? cur.gallery : [];
 
   if (typeof document === 'undefined') return null;
   return createPortal(
@@ -211,9 +210,9 @@ function PlaceOverlay({ layoutKey, hotel, current, setCurrent, onClose }: { layo
             <PlaceMap hotel={hotel} active={current} onSelect={(i) => setCurrent(i)} card={false} expandable={false} className="h-full" padLeft={desktop ? 440 : 0} padBottom={desktop ? 0 : 330} />
           </motion.div>
         )}
-        {coverKey && (
+        {cover && (
           <motion.div layout className="pointer-events-none absolute inset-0" initial={{ opacity: 1 }} animate={{ opacity: ready ? 0 : 1 }} exit={{ opacity: 1 }} transition={{ ...MORPH, opacity: { duration: 0.6, ease: EASE } }}>
-            <Image src={MEDIA[coverKey].src} alt="" fill sizes="100vw" className="object-cover" />
+            <Image src={cover} alt="" fill sizes="100vw" className="object-cover" />
           </motion.div>
         )}
 
@@ -288,7 +287,7 @@ function PlaceOverlay({ layoutKey, hotel, current, setCurrent, onClose }: { layo
                     <li key={p.id}>
                       <button type="button" onClick={() => setCurrent(i)} className="group flex w-full items-center gap-3 rounded-2xl p-1.5 pr-3 text-left transition-colors hover:bg-ivory">
                         <span className="relative h-12 w-14 shrink-0 overflow-hidden rounded-xl bg-sand">
-                          <Image src={MEDIA[p.image].src} alt="" fill sizes="56px" className="object-cover" />
+                          <Image src={p.photo.src} alt="" fill sizes="56px" className="object-cover" />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-semibold">

@@ -30,9 +30,6 @@ export default async function ReviewPage({ params }: { params: Promise<{ locale:
             <div className="relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-sand">
               <Image src={room.photos[0].src} alt={room.photos[0].alt} fill sizes="(min-width:1024px) 40vw, 100vw" className="object-cover" priority />
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-navy-3/85 to-transparent p-6 text-ivory">
-                <p className="text-[0.66rem] font-semibold uppercase tracking-[0.2em] text-gold">
-                  {t.room} {room.number}
-                </p>
                 <p className="serif mt-1 text-[2rem] leading-tight">{room.t.title}</p>
               </div>
             </div>

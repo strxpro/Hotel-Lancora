@@ -8,8 +8,10 @@ import { cn, notti } from '@/lib/utils';
 import { Badge, Button, Segmented, StickyBar } from './ui';
 import { NiceSelect } from './nice-select';
 import { BlockDetailDialog, BookingDetailDialog, NewBookingDialog, RangeActionDialog, type BlockRow } from './booking-dialogs';
+import { BookingView } from './booking-view';
+import type { RatePeriod } from '@/lib/types';
 
-type View = 'planning' | 'calendario';
+type View = 'planning' | 'calendario' | 'booking';
 const EASE = [0.22, 0.61, 0.12, 1] as const;
 const FLOOR: Record<string, string> = { terra: 'Piano terra', superiore: 'Piano sup.', inferiore: 'Piano inf.' };
 
@@ -19,7 +21,7 @@ function tone(b: BookingRow): { x: string; bar: string; label: string } {
   return { x: 'text-navy', bar: 'bg-navy/[0.07]', label: 'Prenotazione' };
 }
 
-export function PlanningBoard({ rooms, bookings, blocks, today, initialMonth, initialView, openBlock }: { rooms: RoomOption[]; bookings: BookingRow[]; blocks: BlockRow[]; today: string; initialMonth: string; initialView: View; openBlock?: boolean }) {
+export function PlanningBoard({ rooms, bookings, blocks, today, initialMonth, initialView, openBlock, periods = [] }: { rooms: RoomOption[]; bookings: BookingRow[]; blocks: (BlockRow & { source?: string })[]; today: string; initialMonth: string; initialView: View; openBlock?: boolean; periods?: RatePeriod[] }) {
   const [month, setMonth] = useState(initialMonth);
   const [view, setView] = useState<View>(initialView);
   const [q, setQ] = useState('');
@@ -73,7 +75,7 @@ export function PlanningBoard({ rooms, bookings, blocks, today, initialMonth, in
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Segmented id="planning-view" value={view} onChange={setView} options={[{ value: 'planning', label: 'Planning' }, { value: 'calendario', label: 'Calendario' }]} />
+          <Segmented id="planning-view" value={view} onChange={setView} options={[{ value: 'planning', label: 'Planning' }, { value: 'calendario', label: 'Calendario' }, { value: 'booking', label: 'Vista Booking' }]} />
           <Button size="sm" onClick={() => setNewBooking({})}>
             <Phone className="h-4 w-4" /> Prenotazione telefonica
           </Button>
@@ -124,6 +126,8 @@ export function PlanningBoard({ rooms, bookings, blocks, today, initialMonth, in
               <SheetGrid month={month} today={today} rooms={shownRooms} bookings={bookings} blocks={blocks} showCancelled={showCancelled} sel={sel} onCell={onCell} onBooking={setDetail} onBlock={setBlockDetail} />
               <Legend />
             </>
+          ) : view === 'booking' ? (
+            <BookingView rooms={rooms} bookings={bookings} blocks={blocks} periods={periods} today={today} onBooking={setDetail} />
           ) : (
             <CalendarView month={month} today={today} bookings={bookings} rooms={rooms} onOpen={setDetail} onNew={(d) => setNewBooking({ checkIn: d, checkOut: addDays(d, 1) })} />
           )}

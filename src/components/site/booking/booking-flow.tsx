@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { TaxLine } from './tax-line';
 import type { TaxQuote } from '@/lib/tourist-tax';
+import type { Locale } from '@/lib/types';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from 'motion/react';
@@ -22,6 +23,15 @@ import { openLegal } from '../legal-dialog';
 import { createReservation, payAtHotel, simulatePayment, startCashGuarantee, startStripeCheckout } from '@/app/[locale]/prenotazione/actions';
 import { CARE_T } from '@/lib/i18n/care-dict';
 
+export type StayTimes = { checkInFrom: string; checkInTo: string; checkOutBy: string };
+const TIMES_T: Record<Locale, { range: string; from: string; by: string }> = {
+  it: { range: 'dalle {a} alle {b}', from: 'dalle {a}', by: 'entro le {t}' },
+  en: { range: 'from {a} to {b}', from: 'from {a}', by: 'until {t}' },
+  pl: { range: 'od {a} do {b}', from: 'od {a}', by: 'do {t}' },
+  de: { range: 'von {a} bis {b} Uhr', from: 'ab {a} Uhr', by: 'bis {t} Uhr' },
+  fr: { range: 'de {a} à {b}', from: 'à partir de {a}', by: 'jusqu’à {t}' },
+  es: { range: 'de {a} a {b}', from: 'desde las {a}', by: 'hasta las {t}' },
+};
 type QuoteResponse = { available: boolean; reason: 'capacity' | 'occupied' | null; quote: StayQuote; dueNow: number; promoValid: boolean; promoRequested: boolean; cashPercent?: number; touristTax?: TaxQuote | null };
 type Hold = { bookingId: string; token: string; code: string; dueNow: number; total: number; holdExpiresAt: string };
 type Payments = { mode: 'full' | 'deposit_percent' | 'deposit_fixed'; depositPercent: number; depositFixed: number; cancellationPolicy: string; holdMinutes: number; freeCancellationDays: number; cancellationFee?: { type: 'percent' | 'first_night' | 'fixed'; value: number } };
@@ -38,6 +48,7 @@ export function BookingFlow({
   stripeKey = null,
   cash = { enabled: false, percent: 0 },
   online = true,
+  times = null,
 }: {
   today: string;
   initialQuery: StayQuery;
@@ -49,6 +60,8 @@ export function BookingFlow({
   cash?: { enabled: boolean; percent: number; guarantee?: boolean };
   /** false = the hotel only takes payment at the property */
   online?: boolean;
+  /** check-in / check-out hours (Impostazioni → Arrivo e partenza), shown like Booking does */
+  times?: StayTimes | null;
 }) {
   const [method, setMethod] = useState<'card' | 'cash'>(online || !cash.enabled ? 'card' : 'cash');
   const { t, locale, href } = useI18n();
@@ -58,6 +71,7 @@ export function BookingFlow({
   const [step, setStep] = useState(0);
   const [query, setQuery] = useState<StayQuery>(initialQuery);
   const [available, setAvailable] = useState<RoomResult[] | null>(null);
+  const [alternatives, setAlternatives] = useState<AvailabilityResponse['alternatives']>([]);
   const [roomSlug, setRoomSlug] = useState<string | null>(initialRoomSlug);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [promoInput, setPromoInput] = useState('');
@@ -90,6 +104,7 @@ export function BookingFlow({
       const r = await fetch(`/api/availability?${p}`, { cache: 'no-store' });
       const data = (await r.json()) as AvailabilityResponse;
       setAvailable(data.results);
+      setAlternatives(data.alternatives ?? []);
       return data.results;
     },
     [locale],
@@ -263,7 +278,7 @@ export function BookingFlow({
     </label>
   );
 
-  const summary = <Summary room={room} query={query} quote={quote} hold={hold} payments={payments} promoInput={promoInput} setPromoInput={setPromoInput} applyPromo={() => setPromo(promoInput.trim() || null)} canPromo={step === 2 && !hold} guests={guests} cashPercent={cashPct} method={step === 3 ? method : 'card'} />;
+  const summary = <Summary room={room} query={query} quote={quote} hold={hold} payments={payments} promoInput={promoInput} setPromoInput={setPromoInput} applyPromo={() => setPromo(promoInput.trim() || null)} canPromo={step === 2 && !hold} guests={guests} cashPercent={cashPct} method={step === 3 ? method : 'card'} times={times} />;
 
   return (
     <div id="prenotazione-top" className="grid gap-10 [&>*]:min-w-0 md:grid-cols-12 md:gap-8 lg:gap-14">
@@ -311,6 +326,7 @@ export function BookingFlow({
                 busy={busy}
                 rooms={rooms}
                 available={available}
+                alternatives={alternatives}
                 selected={roomSlug}
                 cashPercent={cash.enabled ? cash.percent : 0}
                 onPick={(slug) => {
@@ -527,7 +543,7 @@ function MobileSummary({ room, query, total, guests, children }: { room: RoomCar
   );
 }
 
-function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput, applyPromo, canPromo, guests, cashPercent, method }: { room: RoomCardData | null; query: StayQuery; quote: QuoteResponse | null; hold: Hold | null; payments: Payments; promoInput: string; setPromoInput: (s: string) => void; applyPromo: () => void; canPromo: boolean; guests: number; cashPercent: number; method: 'card' | 'cash' }) {
+function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput, applyPromo, canPromo, guests, cashPercent, method, times = null }: { room: RoomCardData | null; query: StayQuery; quote: QuoteResponse | null; hold: Hold | null; payments: Payments; promoInput: string; setPromoInput: (s: string) => void; applyPromo: () => void; canPromo: boolean; guests: number; cashPercent: number; method: 'card' | 'cash'; times?: StayTimes | null }) {
   const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
   const q = quote?.quote;
@@ -546,15 +562,24 @@ function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput
           </motion.p>
         </AnimatePresence>
         {room && <p className="mt-1 text-xs text-mist">{room.number ? `N° ${room.number} · ` : ''}{t.roomTypes[room.type]} · {t.floor[room.floor]}</p>}
-        <dl className="mt-6 grid grid-cols-2 gap-4 border-y border-line py-5 text-sm">
-          <div>
-            <dt className="label mb-1">{t.search.arrival}</dt>
-            <dd className="text-navy">{query.checkIn ? fmtDateLong(query.checkIn, locale) : '—'}</dd>
-          </div>
-          <div>
-            <dt className="label mb-1">{t.search.departure}</dt>
-            <dd className="text-navy">{query.checkOut ? fmtDateLong(query.checkOut, locale) : '—'}</dd>
-          </div>
+        {/* like Booking: the two days side by side, each with its hours */}
+        <div className="mt-6 grid grid-cols-2 overflow-hidden rounded-2xl border border-line" data-testid="stay-times">
+          {([
+            ['Check-in', query.checkIn, times ? (times.checkInTo ? TIMES_T[locale].range.replace('{a}', times.checkInFrom).replace('{b}', times.checkInTo) : TIMES_T[locale].from.replace('{a}', times.checkInFrom)) : null],
+            ['Check-out', query.checkOut, times ? TIMES_T[locale].by.replace('{t}', times.checkOutBy) : null],
+          ] as const).map(([label, day, hours], i) => (
+            <div key={label} className={cn('px-4 py-3.5', i === 1 && 'border-l border-line')}>
+              <p className="text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-mist">{label}</p>
+              <p className="mt-1 text-[0.95rem] font-semibold leading-snug text-navy">{day ? fmtDate(day, locale, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</p>
+              {hours && (
+                <p className="mt-1 flex items-center gap-1.5 text-[0.78rem] text-charcoal/75">
+                  <Clock className="h-3.5 w-3.5 text-gold-2" /> {hours}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+        <dl className="mt-4 grid grid-cols-2 gap-4 border-b border-line pb-5 text-sm">
           <div>
             <dt className="label mb-1">{t.search.guests}</dt>
             <dd className="text-navy">{plural(locale, guests, t.search.guestsCount)}</dd>

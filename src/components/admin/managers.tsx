@@ -534,14 +534,14 @@ export function PricingRulesForm({ initial, cashPercent, canEdit }: { initial: {
         )}
         <p className="mt-3 text-[0.75rem] text-charcoal/70">{mk.enabled && mk.percent > 0 ? `Acceso: sul sito ogni prezzo con carta è più alto del ${mk.percent}% (camere, ricerca, prenotazione, chat).` : 'Spento: sul sito si vedono esattamente i prezzi che scrivi.'}</p>
       </div>
-      <div className="mt-4 rounded-2xl border border-line bg-ivory p-4" data-testid="tourist-tax">
+      <div id="tassa" className="mt-4 scroll-mt-28 rounded-2xl border border-line bg-ivory p-4" data-testid="tourist-tax">
         <div className="flex flex-wrap items-center gap-3">
           <p className="flex flex-1 items-center gap-2 text-sm font-semibold text-navy">
             <Landmark className="h-4 w-4 text-gold-2" /> Tassa di soggiorno
           </p>
           <Toggle checked={tax.enabled} disabled={!canEdit} onChange={(v) => setTax({ enabled: v })} label="Tassa di soggiorno" />
         </div>
-        <p className="mt-1 text-[0.78rem] leading-relaxed text-mist">Non entra nel prezzo della camera: il sito la mostra all’ospite (pagina della camera, riepilogo, email di conferma) e la si paga in hotel. Solo adulti.</p>
+        <p className="mt-1 text-[0.78rem] leading-relaxed text-mist">Quanto paga ogni adulto per ogni notte (i bambini no). Non entra nel prezzo della camera: il sito la scrive sotto l’elenco delle camere, nella pagina della camera, nel riepilogo e nell’email di conferma, e la si paga in hotel.</p>
         {tax.enabled && (
           <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-4">
             <label className="block">

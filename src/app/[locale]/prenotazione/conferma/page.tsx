@@ -116,7 +116,7 @@ export default async function ConfirmPage({ params, searchParams }: Props) {
             )}
             <dl className="divide-y divide-line px-6 text-sm">
               {[
-                [t.room.about, room ? `${room.t.title} · N° ${room.number}` : '—'],
+                [t.room.about, room ? room.t.title : '—'],
                 [t.search.arrival, fmtDateLong(b.checkIn, locale)],
                 [t.search.departure, fmtDateLong(b.checkOut, locale)],
                 [t.search.guests, plural(locale, b.adults + b.children, t.search.guestsCount)],

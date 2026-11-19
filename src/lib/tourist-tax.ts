@@ -53,3 +53,20 @@ export const TAX_T: Record<Locale, TaxText> = {
 export function taxDetail(lang: Locale, q: TaxQuote, money: (n: number) => string): string {
   return TAX_T[lang].detail.replace('{adults}', String(q.adults)).replace('{nights}', String(q.nights)).replace('{amount}', money(q.perNight));
 }
+
+/** The rule in one line for the rooms pages: "2 € per adult per night · 1 June – 30 September · max 7 nights". */
+export const TAX_RULE: Record<Locale, { per: string; always: string; max: string; kids: string }> = {
+  it: { per: 'per adulto a notte', always: 'tutto l’anno', max: 'max {n} notti', kids: 'bambini esenti' },
+  en: { per: 'per adult per night', always: 'all year', max: 'max {n} nights', kids: 'children exempt' },
+  pl: { per: 'za osobę dorosłą za noc', always: 'cały rok', max: 'maks. {n} nocy', kids: 'dzieci zwolnione' },
+  de: { per: 'pro Erwachsenem und Nacht', always: 'ganzjährig', max: 'max. {n} Nächte', kids: 'Kinder befreit' },
+  fr: { per: 'par adulte et par nuit', always: 'toute l’année', max: '{n} nuits max.', kids: 'enfants exonérés' },
+  es: { per: 'por adulto y noche', always: 'todo el año', max: 'máx. {n} noches', kids: 'niños exentos' },
+};
+
+/** "1 giugno – 30 settembre" from the "MM-DD" season (empty when it is the whole year). */
+export function taxSeasonLabel(t: Pick<TouristTax, 'from' | 'to'>, lang: Locale): string {
+  if ((t.from === '01-01' && t.to === '12-31') || !t.from || !t.to) return '';
+  const f = (md: string) => new Date(`2001-${md}T12:00:00Z`).toLocaleDateString(lang, { day: 'numeric', month: 'long', timeZone: 'UTC' });
+  return `${f(t.from)} – ${f(t.to)}`;
+}

@@ -35,7 +35,7 @@ export default async function HomePage({ params, searchParams }: Props) {
   const results = q.checkIn && q.checkOut ? availability(db, { checkIn: q.checkIn, checkOut: q.checkOut, adults: q.adults, children: q.children }, locale) : null;
   const { hotel } = db.settings;
   const reviews = publicReviews(db, locale).slice(0, 40);
-  const reviewRooms = db.rooms.filter((r) => r.status === 'available' && !r.hidden).sort((a, b) => a.sortOrder - b.sortOrder).map((r) => ({ id: r.id, number: r.numberAuto ? '' : r.number, name: localizeRoom(r, locale).t.title || r.name }));
+  const reviewRooms = db.rooms.filter((r) => r.status === 'available' && !r.hidden).sort((a, b) => a.sortOrder - b.sortOrder).map((r) => ({ id: r.id, number: '', name: localizeRoom(r, locale).t.title || r.name }));
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -51,7 +51,7 @@ export default async function HomePage({ params, searchParams }: Props) {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <HomeExperience rooms={publicCards(db, locale)} initialQuery={q} initialResults={results} today={today} cashPercent={db.settings.payments.allowCashAtHotel ? db.settings.payments.cashDiscountPercent : 0}>
+      <HomeExperience rooms={publicCards(db, locale)} initialQuery={q} initialResults={results} today={today} cashPercent={db.settings.payments.allowCashAtHotel ? db.settings.payments.cashDiscountPercent : 0} tax={db.settings.pricing?.touristTax?.enabled ? db.settings.pricing.touristTax : null}>
         <IntroSection hotel={{ phone: hotel.phone, whatsapp: hotel.whatsapp, email: hotel.email }} />
         <ReviewsSection reviews={reviews} rooms={reviewRooms} />
         <ExploreSection lat={hotel.lat} lng={hotel.lng} name={hotel.name} verified={hotel.addressVerified} />

@@ -72,7 +72,7 @@ export default async function GuestPage({ params, searchParams }: { params: Prom
             )}
             <dl className="grid gap-px bg-line sm:grid-cols-2">
               {[
-                [t.guest.stay, room ? `${room.t.title} · N° ${room.number}` : '—'],
+                [t.guest.stay, room ? room.t.title : '—'],
                 [t.booking.code, b.code],
                 [t.search.arrival, `${fmtDateLong(b.checkIn, locale)} · ${h.checkInFrom}–${h.checkInTo}`],
                 [t.search.departure, `${fmtDateLong(b.checkOut, locale)} · ${h.checkOutBy}`],

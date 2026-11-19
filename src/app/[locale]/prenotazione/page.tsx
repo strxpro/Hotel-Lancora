@@ -50,6 +50,7 @@ export default async function BookingPage({ params, searchParams }: Props) {
             stripeKey={publishableKey()}
             cash={{ enabled: p.allowCashAtHotel, percent: p.cashDiscountPercent, guarantee: p.cardGuarantee === true && cardPaymentsReady(db) }}
             online={(p.allowOnline !== false || !p.allowCashAtHotel) && (cardPossible || !p.allowCashAtHotel)}
+            times={{ checkInFrom: db.settings.hotel.checkInFrom, checkInTo: db.settings.hotel.checkInTo, checkOutBy: db.settings.hotel.checkOutBy }}
           />
         </div>
       </div>

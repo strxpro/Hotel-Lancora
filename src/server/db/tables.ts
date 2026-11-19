@@ -227,7 +227,7 @@ function campaignRow(c: Campaign): Row {
 }
 
 function settingsRow(s: DB['settings']): Row {
-  const { hotel, floors, payments, pricing, stripeConnect, notifications, services, reviews, customAmenities, faq, demoMode, panel, ...rest } = s;
+  const { hotel, floors, payments, pricing, stripeConnect, notifications, services, reviews, customAmenities, faq, demoMode, panel, places, ...rest } = s;
   all(rest);
   // same defaults as normalize() in store.ts, for documents written by older versions of the site
   return {
@@ -244,6 +244,7 @@ function settingsRow(s: DB['settings']): Row {
     faq: faq ?? [],
     demo_mode: demoMode,
     panel: panel ?? null,
+    places: places ?? null,
   };
 }
 
