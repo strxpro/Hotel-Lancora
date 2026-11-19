@@ -9,6 +9,7 @@ import { EXPERIENCES } from '@/content/experiences';
 import { amenityLabel } from '@/content/amenities';
 import { getDictionary } from '@/lib/i18n/dictionaries';
 import { localizeRoom } from '../rooms';
+import { onlineRoom } from '@/lib/online-price';
 
 export interface ChatAction {
   label: string;
@@ -164,7 +165,8 @@ export function answerKB(db: DB, message: string, lang: Locale, today: string): 
 
   if (RX.price.test(n)) {
     const g = persons(n) ?? 2;
-    const rooms = db.rooms.filter((r) => isPubliclyBookable(r) && r.maxGuests >= g).sort((a, b) => a.basePrice - b.basePrice);
+    // the prices the guests see (online increase on the card price, when it is on)
+    const rooms = db.rooms.filter((r) => isPubliclyBookable(r) && r.maxGuests >= g).map((r) => onlineRoom(r, db.settings)).sort((a, b) => a.basePrice - b.basePrice);
     if (!rooms.length) return reply('price', fillT(T.priceNone[lang], { n: g }), [contactAction]);
     const list = rooms
       .slice(0, 3)
@@ -203,7 +205,7 @@ export function buildSystemPrompt(db: DB, lang: Locale, today: string): string {
   const h = db.settings.hotel;
   const rooms = db.rooms.filter(isPubliclyBookable).map((r) => {
     const l = localizeRoom(r, 'it');
-    return `- ${l.t.title} (n. ${r.number}): ${r.type}, max ${ospiti(r.maxGuests)}, ${r.beds}, ${r.size ?? '?'} m², ${r.floor === 'terra' ? 'piano terra' : r.floor === 'superiore' ? 'piano superiore' : 'piano inferiore'}, da € ${r.basePrice}/notte. Dotazioni: ${r.amenities.map((a) => amenityLabel(a, 'it')).join(', ')}.`;
+    return `- ${l.t.title} (n. ${r.number}): ${r.type}, max ${ospiti(r.maxGuests)}, ${r.beds}, ${r.size ?? '?'} m², ${r.floor === 'terra' ? 'piano terra' : r.floor === 'superiore' ? 'piano superiore' : 'piano inferiore'}, da € ${onlineRoom(r, db.settings).basePrice}/notte. Dotazioni: ${r.amenities.map((a) => amenityLabel(a, 'it')).join(', ')}.`;
   });
   const nights = Array.from({ length: 14 }, (_, i) => addDays(today, i)).map((d) => {
     const free = searchAvailability(db, { checkIn: d, checkOut: addDays(d, 1), adults: 1, children: 0 }).filter((r) => r.available);

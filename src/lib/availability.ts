@@ -1,6 +1,7 @@
 import type { Block, Booking, DB, Promotion, RatePeriod, Room } from './types';
 import { addDays, diffDays, eachNight, rangesOverlap } from './dates';
 import { cashPercentFor } from './cash';
+import { onlinePeriods, onlineRoom } from './online-price';
 
 /**
  * Night logic (shared by search, booking, planning, assistant):
@@ -72,8 +73,11 @@ export function nightlyPrice(room: Room, date: string, periods: RatePeriod[]): n
  * does not take cash. Not rounded, so card total × (1 − percent) gives the cash total to the cent.
  */
 export function stayCashPercent(room: Room, checkIn: string, checkOut: string, periods: RatePeriod[], payments: { allowCashAtHotel: boolean; cashDiscountPercent: number }): number {
-  const base = cashPercentFor(room, payments);
   if (!payments.allowCashAtHotel) return 0;
+  // the room's own cash price as an exact percent (cashPercentFor rounds it for display): the cash
+  // total of the stay comes out to the cent
+  const ownCash = typeof room.cashPrice === 'number' && room.cashPrice > 0 && room.cashPrice < room.basePrice && room.basePrice > 0;
+  const base = ownCash ? (1 - room.cashPrice! / room.basePrice) * 100 : cashPercentFor(room, payments);
   let card = 0;
   let cash = 0;
   let own = false;
@@ -163,7 +167,7 @@ export function searchAvailability(db: DB, q: SearchQuery, now: Date = new Date(
 
   return rooms
     .filter((r) => r.maxGuests >= guests)
-    .map((room) => ({ room, available: free.has(room.id), quote: quoteStay(room, q.checkIn, q.checkOut, db.ratePeriods, null, { guests, singleUsePercent: db.settings.pricing?.singleUsePercent }) }));
+    .map((room) => ({ room, available: free.has(room.id), quote: quoteStay(onlineRoom(room, db.settings), q.checkIn, q.checkOut, onlinePeriods(db.ratePeriods, db.settings), null, { guests, singleUsePercent: db.settings.pricing?.singleUsePercent }) }));
 }
 
 /** Suggest nearby date windows with at least one free room for the guests. */

@@ -6,6 +6,7 @@ import { addDays, diffDays, fmtDate, isValidISODate, todayISO } from '@/lib/date
 import { afterCommit, mutate, newId, newToken, readDb } from './db/store';
 import { audit, guestName, notify, queueEmail } from './events';
 import { notti, ospiti } from '@/lib/utils';
+import { onlinePeriods, onlineRoom } from '@/lib/online-price';
 
 export class BookingError extends Error {
   constructor(message: string, public code: 'invalid' | 'conflict' | 'not_found' | 'expired' | 'capacity' = 'invalid') {
@@ -68,7 +69,7 @@ export function createWebsiteHold(input: WebsiteBookingInput): { booking: Bookin
     if (input.adults + input.children > room.maxGuests) throw new BookingError(`La camera ospita al massimo ${room.maxGuests} ${room.maxGuests === 1 ? 'persona' : 'persone'}.`, 'capacity');
     assertFree(db, room.id, input.checkIn, input.checkOut);
     const promo = findPromo(db, input.promoCode);
-    const q = quoteStay(room, input.checkIn, input.checkOut, db.ratePeriods, promo, { guests: input.adults + input.children, singleUsePercent: db.settings.pricing?.singleUsePercent });
+    const q = quoteStay(onlineRoom(room, db.settings), input.checkIn, input.checkOut, onlinePeriods(db.ratePeriods, db.settings), promo, { guests: input.adults + input.children, singleUsePercent: db.settings.pricing?.singleUsePercent });
     const now = new Date();
     const b: Booking = {
       id: newId('bk-'),
@@ -163,7 +164,7 @@ export function confirmPayAtHotel(bookingId: string): { booking: Booking; saved:
       throw new BookingError('La prenotazione temporanea è scaduta.', 'expired');
     }
     const roomOf = db.rooms.find((r) => r.id === b.roomId);
-    const pct = roomOf ? stayCashPercent(roomOf, b.checkIn, b.checkOut, db.ratePeriods, p) : Math.max(0, p.cashDiscountPercent);
+    const pct = roomOf ? stayCashPercent(onlineRoom(roomOf, db.settings), b.checkIn, b.checkOut, onlinePeriods(db.ratePeriods, db.settings), p) : Math.max(0, p.cashDiscountPercent);
     const saved = round2((b.total * pct) / 100);
     b.total = round2(b.total - saved);
     b.discount = round2(b.discount + saved);

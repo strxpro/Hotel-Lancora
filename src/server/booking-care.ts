@@ -8,6 +8,7 @@ import { mutate, newId, readDb } from './db/store';
 import { audit, guestName, notify, queueEmail } from './events';
 import { chargeSavedCard, cardLabel } from './payments/card';
 import { refundGuestPayment } from './payments/refund';
+import { onlinePeriods, onlineRoom } from '@/lib/online-price';
 
 /**
  * What the hotel does with a booking after it is made, like on the portals' extranet:
@@ -281,9 +282,13 @@ export function quoteChange(db: DB, b: Booking, checkIn: string, checkOut: strin
   if (!room) throw new BookingError('Camera non trovata.', 'not_found');
   if (room.maxGuests < b.adults + b.children) throw new BookingError(`La camera ${room.number} ospita al massimo ${room.maxGuests} ${room.maxGuests === 1 ? 'persona' : 'persone'}.`, 'capacity');
   const busy = roomConflicts(db, room.id, checkIn, checkOut, { ignoreBookingId: b.id });
-  const q = quoteStay(room, checkIn, checkOut, db.ratePeriods, null, { guests: b.adults + b.children, singleUsePercent: db.settings.pricing?.singleUsePercent });
+  // a booking made on the site keeps the site's prices (online increase included, when it is on)
+  const site = b.source === 'sito';
+  const priced = site ? onlineRoom(room, db.settings) : room;
+  const periods = site ? onlinePeriods(db.ratePeriods, db.settings) : db.ratePeriods;
+  const q = quoteStay(priced, checkIn, checkOut, periods, null, { guests: b.adults + b.children, singleUsePercent: db.settings.pricing?.singleUsePercent });
   // a cash booking keeps the cash price
-  const total = b.paymentMethod === 'cash' ? round2(q.total * (1 - stayCashPercent(room, checkIn, checkOut, db.ratePeriods, db.settings.payments) / 100)) : q.total;
+  const total = b.paymentMethod === 'cash' ? round2(q.total * (1 - stayCashPercent(priced, checkIn, checkOut, periods, db.settings.payments) / 100)) : q.total;
   return { roomId: room.id, roomNumber: room.number, total, nights: q.nights, free: busy.length === 0, busy: busy[0] ? `${fmtDate(busy[0].from)} → ${fmtDate(busy[0].to)}` : null };
 }
 

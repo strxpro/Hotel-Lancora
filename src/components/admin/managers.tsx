@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { Banknote, BedDouble, Coffee, CreditCard, Landmark, Mail, MailOpen, Percent, Send, Trash2, UserRound, Wallet } from 'lucide-react';
+import { Banknote, BedDouble, Coffee, CreditCard, Landmark, Mail, MailOpen, Percent, Send, Trash2, TrendingUp, UserRound, Wallet } from 'lucide-react';
 import type { RoomOption } from '@/server/admin-data';
 import type { MonthPrice } from '@/lib/period-prices';
 import { addDays, fmtDate, fmtDateTime, todayISO } from '@/lib/dates';
@@ -374,8 +374,10 @@ function DayMonth({ value, onChange, disabled, label }: { value: string; onChang
   );
 }
 
-export function PricingRulesForm({ initial, cashPercent, canEdit }: { initial: { singleUsePercent: number; board: 'room_only' | 'breakfast'; touristTax?: TouristTax }; cashPercent: number; canEdit: boolean }) {
+export function PricingRulesForm({ initial, cashPercent, canEdit }: { initial: { singleUsePercent: number; board: 'room_only' | 'breakfast'; touristTax?: TouristTax; onlineMarkup: { enabled: boolean; percent: number } }; cashPercent: number; canEdit: boolean }) {
   const [f, setF] = useState({ ...initial, touristTax: initial.touristTax ?? TAX_DEFAULT });
+  const mk = f.onlineMarkup;
+  const setMk = (patch: Partial<typeof mk>) => setF({ ...f, onlineMarkup: { ...mk, ...patch } });
   const tax = f.touristTax;
   const setTax = (patch: Partial<TouristTax>) => setF({ ...f, touristTax: { ...tax, ...patch } });
   // example: 2 adults, 3 nights in the middle of the season
@@ -433,6 +435,30 @@ export function PricingRulesForm({ initial, cashPercent, canEdit }: { initial: {
             </li>
           </ul>
         </div>
+      </div>
+      <div className={cn('mt-4 rounded-2xl border p-4 transition-colors duration-300', mk.enabled ? 'border-gold/60 bg-white' : 'border-line bg-ivory')} data-testid="online-markup">
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="flex flex-1 items-center gap-2 text-sm font-semibold text-navy">
+            <TrendingUp className="h-4 w-4 text-gold-2" /> Aumento prezzi online
+          </p>
+          <Toggle checked={mk.enabled} disabled={!canEdit} onChange={(v) => setMk({ enabled: v })} label="Aumento prezzi online" />
+        </div>
+        <p className="mt-1 text-[0.78rem] leading-relaxed text-mist">Tutti i prezzi con carta sul sito salgono di questa percentuale (es. per coprire il costo dei bonifici immediati). Tu continui a scrivere i tuoi prezzi di sempre; il prezzo in contanti resta uguale. Per l’ospite è semplicemente il prezzo della camera.</p>
+        {mk.enabled && (
+          <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3">
+            <label className="flex items-center gap-2">
+              <NumInput min={0.5} max={20} decimals={1} className="field w-24" value={mk.percent} disabled={!canEdit} onChange={(v) => v !== null && setMk({ percent: v })} />
+              <span className="text-sm text-navy">% in più</span>
+            </label>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="rounded-full border border-line bg-ivory px-3 py-1 text-charcoal/70 line-through decoration-gold/70">{money(sample, 'it', 2)}</span>
+              <span className="text-gold-2">→</span>
+              <span className="rounded-full bg-navy px-3 py-1 font-semibold text-ivory">{money(Math.round(sample * (1 + mk.percent / 100) * 100) / 100, 'it', 2)} con carta</span>
+              {cashPercent > 0 && <span className="rounded-full border border-line bg-ivory px-3 py-1 text-navy">{money(Math.round(sample * (1 - cashPercent / 100) * 100) / 100, 'it', 2)} in contanti, come prima</span>}
+            </div>
+          </div>
+        )}
+        <p className="mt-3 text-[0.75rem] text-charcoal/70">{mk.enabled && mk.percent > 0 ? `Acceso: sul sito ogni prezzo con carta è più alto del ${mk.percent}% (camere, ricerca, prenotazione, chat).` : 'Spento: sul sito si vedono esattamente i prezzi che scrivi.'}</p>
       </div>
       <div className="mt-4 rounded-2xl border border-line bg-ivory p-4" data-testid="tourist-tax">
         <div className="flex flex-wrap items-center gap-3">

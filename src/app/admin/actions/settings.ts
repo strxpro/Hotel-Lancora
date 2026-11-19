@@ -17,12 +17,14 @@ export async function savePricingAction(raw: unknown) {
         singleUsePercent: z.number().min(0).max(60),
         board: z.enum(['room_only', 'breakfast']),
         touristTax: z.object({ enabled: z.boolean(), amount: z.number().min(0).max(20), from: md, to: md, maxNights: z.number().int().min(0).max(60) }).optional(),
+        onlineMarkup: z.object({ enabled: z.boolean(), percent: z.number().min(0).max(20) }).optional(),
       })
       .parse(raw);
     mutate((db) => {
       db.settings.pricing = { ...db.settings.pricing, ...p };
       const t = p.touristTax;
-      audit(db, u.name, 'settings', 'pricing', null, `Uso singola −${p.singleUsePercent}% · ${p.board === 'room_only' ? 'solo pernottamento' : 'con colazione'}${t ? ` · tassa di soggiorno ${t.enabled ? `€ ${t.amount} a persona a notte dal ${t.from} al ${t.to}${t.maxNights ? `, max ${t.maxNights} notti` : ''}` : 'spenta'}` : ''}`);
+      const m = p.onlineMarkup;
+      audit(db, u.name, 'settings', 'pricing', null, `Uso singola −${p.singleUsePercent}% · ${p.board === 'room_only' ? 'solo pernottamento' : 'con colazione'}${t ? ` · tassa di soggiorno ${t.enabled ? `€ ${t.amount} a persona a notte dal ${t.from} al ${t.to}${t.maxNights ? `, max ${t.maxNights} notti` : ''}` : 'spenta'}` : ''}${m ? ` · prezzi online ${m.enabled && m.percent > 0 ? `+${m.percent}%` : 'senza aumento'}` : ''}`);
     });
   }, 'Tariffe salvate: i prezzi del sito sono già aggiornati.');
 }

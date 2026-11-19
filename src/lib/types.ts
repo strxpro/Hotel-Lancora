@@ -361,6 +361,8 @@ export interface Settings {
     board: 'room_only' | 'breakfast';
     /** the town's tax per adult and night, paid at the hotel (lib/tourist-tax.ts) */
     touristTax?: { enabled: boolean; amount: number; from: string; to: string; maxNights: number };
+    /** "Aumento prezzi online": card prices on the site + this percent, cash unchanged (lib/online-price.ts) */
+    onlineMarkup?: { enabled: boolean; percent: number };
   };
   stripeConnect: {
     accountId: string | null;

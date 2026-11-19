@@ -7,6 +7,7 @@ import { localizeRoom, publicRooms, type LocalizedRoom } from './rooms';
 import { cashPercentFor, roomPayment } from '@/lib/cash';
 import { roomRatings } from './reviews';
 import { readDb } from './db/store';
+import { onlinePeriods, onlineRoom } from '@/lib/online-price';
 
 export function popularityMap(db: DB): Map<string, number> {
   const since = addDays(todayISO(), -365);
@@ -16,6 +17,9 @@ export function popularityMap(db: DB): Map<string, number> {
 }
 
 export function toCard(r: LocalizedRoom, popularity = 0, payments?: DB['settings']['payments'], rating: { avg: number; count: number } | null = null): RoomCardData {
+  const settings = readDb().settings;
+  // the prices the guests see (online increase on the card price, when it is on)
+  const o = onlineRoom(r, settings);
   return {
     id: r.id,
     slug: r.slug,
@@ -26,17 +30,17 @@ export function toCard(r: LocalizedRoom, popularity = 0, payments?: DB['settings
     beds: r.beds,
     size: r.size,
     floor: r.floor,
-    basePrice: r.basePrice,
-    cashPrice: typeof r.cashPrice === 'number' ? r.cashPrice : null,
+    basePrice: o.basePrice,
+    cashPrice: typeof o.cashPrice === 'number' ? o.cashPrice : null,
     // a room paid only by card shows no cash price
-    cashPercent: payments && roomPayment(r, payments).cash ? cashPercentFor(r, payments) : 0,
+    cashPercent: payments && roomPayment(r, payments).cash ? cashPercentFor(o, payments) : 0,
     pay: payments ? roomPayment(r, payments) : { card: true, cash: false },
     amenities: r.amenities,
     photo: r.photos[0] ?? null,
     photos: r.photos.slice(0, 5),
     short: r.t.short,
     popularity,
-    board: readDb().settings.pricing?.board ?? 'room_only',
+    board: settings.pricing?.board ?? 'room_only',
     rating,
   };
 }
@@ -60,7 +64,7 @@ export function availability(db: DB, q: SearchQuery, locale: Locale): Availabili
       total: r.quote.total,
       averageNight: r.quote.averageNight,
       singleUse: r.quote.singleUse,
-      cashPercent: roomPayment(r.room, db.settings.payments).cash ? stayCashPercent(r.room, q.checkIn, q.checkOut, db.ratePeriods, db.settings.payments) : 0,
+      cashPercent: roomPayment(r.room, db.settings.payments).cash ? stayCashPercent(onlineRoom(r.room, db.settings), q.checkIn, q.checkOut, onlinePeriods(db.ratePeriods, db.settings), db.settings.payments) : 0,
     }));
   return {
     query: q,

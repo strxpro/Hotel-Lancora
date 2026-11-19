@@ -18,7 +18,7 @@ export default async function PricesPage() {
     <div>
       <PageHeader eyebrow="Tariffe" title="Prezzi" description="Il prezzo base vale tutto l’anno; le variazioni per periodo (stagioni, eventi) si sommano sopra. Ogni modifica è subito visibile nella ricerca del sito, nelle card e nel riepilogo di prenotazione." />
       <div className="mb-6">
-        <PricingRulesForm initial={{ singleUsePercent: db.settings.pricing?.singleUsePercent ?? 20, board: db.settings.pricing?.board ?? 'room_only', touristTax: db.settings.pricing?.touristTax }} cashPercent={db.settings.payments.allowCashAtHotel ? db.settings.payments.cashDiscountPercent : 0} canEdit={can(user.role, 'prices.edit')} />
+        <PricingRulesForm initial={{ singleUsePercent: db.settings.pricing?.singleUsePercent ?? 20, board: db.settings.pricing?.board ?? 'room_only', touristTax: db.settings.pricing?.touristTax, onlineMarkup: db.settings.pricing?.onlineMarkup ?? { enabled: false, percent: 1 } }} cashPercent={db.settings.payments.allowCashAtHotel ? db.settings.payments.cashDiscountPercent : 0} canEdit={can(user.role, 'prices.edit')} />
       </div>
       <PricesManager rooms={roomOptions(db)} tonight={tonight} months={Object.fromEntries(db.rooms.map((r) => [r.id, monthPrices(r, db.ratePeriods, today)]))} periods={db.ratePeriods.filter((p) => p.to >= today).map((p) => ({ id: p.id, label: p.label, from: p.from, to: p.to, roomIds: p.roomIds, mode: p.mode, value: p.value, cash: p.cash ?? null }))} canEdit={can(user.role, 'prices.edit')} cash={{ enabled: db.settings.payments.allowCashAtHotel, percent: db.settings.payments.cashDiscountPercent }} />
     </div>

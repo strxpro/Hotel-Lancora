@@ -3,6 +3,7 @@ import { cancelText } from '@/lib/cancellation';
 import { notFound } from 'next/navigation';
 import { cashPercentFor, roomPayment } from '@/lib/cash';
 import { priceExceptions } from '@/lib/period-prices';
+import { onlinePeriods, onlineRoom } from '@/lib/online-price';
 import { publicReviews } from '@/server/reviews';
 import { isLocale } from '@/lib/i18n/config';
 import type { Locale } from '@/lib/types';
@@ -40,10 +41,12 @@ export default async function RoomPage({ params, searchParams }: Props) {
     .map((r) => toCard(r, 0, db.settings.payments));
   const h = db.settings.hotel;
   const pay = roomPayment(room, db.settings.payments);
+  // the prices the guests see (online increase on the card price, when it is on)
+  const priced = onlineRoom(room, db.settings);
   return (
     <RoomDetail
-      room={{ id: room.id, slug: room.slug, number: room.number, title: room.t.title, type: room.type, maxGuests: room.maxGuests, beds: room.beds, size: room.size, floor: room.floor, basePrice: room.basePrice, cashPercent: pay.cash ? cashPercentFor(room, db.settings.payments) : 0, cardOk: pay.card, amenities: room.amenities, photos: room.photos, short: room.t.short, description: room.t.description }}
-      nightly={priceExceptions(room, db.ratePeriods, today, addDays(today, 400))}
+      room={{ id: room.id, slug: room.slug, number: room.number, title: room.t.title, type: room.type, maxGuests: room.maxGuests, beds: room.beds, size: room.size, floor: room.floor, basePrice: priced.basePrice, cashPercent: pay.cash ? cashPercentFor(priced, db.settings.payments) : 0, cardOk: pay.card, amenities: room.amenities, photos: room.photos, short: room.t.short, description: room.t.description }}
+      nightly={priceExceptions(priced, onlinePeriods(db.ratePeriods, db.settings), today, addDays(today, 400))}
       occupied={room.status === 'available' ? occupiedNights(db, room.id, today, addDays(today, 400)) : []}
       similar={similar}
       today={today}
