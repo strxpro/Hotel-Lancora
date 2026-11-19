@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { Banknote, BedDouble, Coffee, CreditCard, Landmark, Mail, MailOpen, Percent, Send, Trash2, TrendingUp, UserRound, Wallet } from 'lucide-react';
+import { Banknote, BedDouble, Coffee, CreditCard, Landmark, Mail, MailOpen, Pencil, Percent, Send, Trash2, TrendingUp, UserRound, Wallet } from 'lucide-react';
 import type { RoomOption } from '@/server/admin-data';
 import type { MonthPrice } from '@/lib/period-prices';
 import { addDays, fmtDate, fmtDateTime, todayISO } from '@/lib/dates';
@@ -9,37 +9,83 @@ import { cn, money } from '@/lib/utils';
 import { TAX_DEFAULT, touristTaxFor, type TouristTax } from '@/lib/tourist-tax';
 import { Badge, Button, Card, Dialog, Empty, Field, NumInput, Segmented, StickyBar, Toggle, useAction } from './ui';
 import { NiceSelect } from './nice-select';
-import { addRatePeriodAction, removeRatePeriodAction } from '@/app/admin/actions/rooms';
+import { removeRatePeriodAction, saveRatePeriodAction } from '@/app/admin/actions/rooms';
 import { PricesBoard } from './prices-board';
 import { savePaymentsAction, savePricingAction } from '@/app/admin/actions/settings';
 import { markMessageRead, resendEmail } from '@/app/admin/actions/misc';
 import { GuestLink } from './guest-card';
 
 /* ---------------- prices ---------------- */
-export function PricesManager({ rooms, tonight, periods, canEdit, cash = { enabled: true, percent: 5 }, months }: { months?: Record<string, MonthPrice[]>; cash?: { enabled: boolean; percent: number }; rooms: RoomOption[]; tonight: Record<string, number>; periods: { id: string; label: string; from: string; to: string; roomIds: string[] | 'all'; mode: 'fixed' | 'percent'; value: number; cash?: number | null }[]; canEdit: boolean }) {
+type PeriodRow = { id: string; label: string; from: string; to: string; roomIds: string[] | 'all'; mode: 'fixed' | 'percent'; value: number; cash?: number | null };
+type PeriodDraft = { id: string | null; label: string; from: string; to: string; scope: 'all' | 'some'; roomIds: string[]; mode: 'fixed' | 'percent'; value: string; cash: string };
+
+const num = (s: string) => Number(s.replace(',', '.').trim());
+const newDraft = (today: string): PeriodDraft => ({ id: null, label: 'Alta stagione', from: addDays(today, 14), to: addDays(today, 28), scope: 'all', roomIds: [], mode: 'fixed', value: '', cash: '' });
+const draftOf = (x: PeriodRow): PeriodDraft => ({ id: x.id, label: x.label, from: x.from, to: x.to, scope: x.roomIds === 'all' ? 'all' : 'some', roomIds: x.roomIds === 'all' ? [] : x.roomIds, mode: x.mode, value: String(x.value).replace('.', ','), cash: x.cash ? String(x.cash).replace('.', ',') : '' });
+
+export function PricesManager({ rooms, tonight, periods, canEdit, cash = { enabled: true, percent: 5 }, months }: { months?: Record<string, MonthPrice[]>; cash?: { enabled: boolean; percent: number }; rooms: RoomOption[]; tonight: Record<string, number>; periods: PeriodRow[]; canEdit: boolean }) {
   const { run, pending } = useAction();
   const today = todayISO();
-  const [p, setP] = useState({ label: 'Ponte / evento', from: addDays(today, 14), to: addDays(today, 17), scope: 'all' as 'all' | 'some', roomIds: [] as string[], mode: 'percent' as 'fixed' | 'percent', value: '15' });
+  const [p, setP] = useState<PeriodDraft>(() => newDraft(today));
+  const editing = p.id !== null;
+  const card = num(p.value);
+  const cashValue = p.cash.trim() ? num(p.cash) : null;
+  const problem =
+    p.to <= p.from
+      ? '“Al” deve venire dopo “dal”.'
+      : p.mode === 'fixed' && !(card >= 1)
+        ? 'Scrivi il prezzo con carta.'
+        : p.mode === 'percent' && !card
+          ? 'Scrivi la variazione in %.'
+          : cashValue !== null && !(cashValue >= 1 && cashValue <= card)
+            ? 'Il prezzo in contanti deve essere più basso (o uguale) di quello con carta.'
+            : p.scope === 'some' && !p.roomIds.length
+              ? 'Scegli almeno una camera.'
+              : null;
+  const nights = Math.max(0, Math.round((Date.parse(p.to) - Date.parse(p.from)) / 86_400_000));
+  const save = () =>
+    run(() => saveRatePeriodAction({ id: p.id, label: p.label, from: p.from, to: p.to, roomIds: p.scope === 'all' ? 'all' : p.roomIds, mode: p.mode, value: card, cash: p.mode === 'fixed' ? cashValue : null }), { onOk: () => setP(newDraft(today)) });
   return (
     <div className="grid gap-6 [&>*]:min-w-0 xl:grid-cols-5">
       <div className="xl:col-span-3">
         <PricesBoard rooms={rooms} tonight={tonight} canEdit={canEdit} cash={cash} months={months} />
       </div>
       <div data-tour="prices-periods" className="space-y-6 xl:col-span-2">
-        <Card title={periods.length ? `Variazioni per periodo · ${periods.length}` : 'Variazioni per periodo'}>
-          {/* a box of its own that scrolls: the new variation stays in view below it */}
+        <Card title={periods.length ? `Prezzi per stagione · ${periods.length}` : 'Prezzi per stagione'}>
+          {canEdit && periods.length > 0 && <p className="mb-3 text-xs text-mist">Tocca una stagione per cambiarla.</p>}
+          {/* a box of its own that scrolls: the editor stays in view below it */}
           <ul data-testid="periods-list" className="-mr-2 max-h-[23rem] space-y-2 overflow-y-auto overscroll-contain pr-2 [scrollbar-width:thin]">
-            {periods.length === 0 && <li className="text-sm text-mist">Nessuna variazione attiva.</li>}
+            {periods.length === 0 && <li className="text-sm text-mist">Nessuna stagione: vale il prezzo base tutto l’anno.</li>}
             {[...periods].sort((a, b) => a.from.localeCompare(b.from) || a.label.localeCompare(b.label)).map((x) => (
-              <li key={x.id} className="flex items-start justify-between gap-3 border border-line bg-ivory px-3 py-2.5 text-sm">
-                <span>
-                  <span className="font-medium text-navy">{x.label}</span>
-                  <span className="block text-xs text-mist">
-                    {fmtDate(x.from)} → {fmtDate(addDays(x.to, -1))} · {x.roomIds === 'all' ? 'tutte le camere' : `camere ${x.roomIds.map((id) => rooms.find((r) => r.id === id)?.number).join(', ')}`} · {x.mode === 'fixed' ? `${money(x.value)}${x.cash ? ` · contanti ${money(x.cash)}` : ''}` : `${x.value > 0 ? '+' : ''}${x.value}%`}
+              <li key={x.id} className={cn('flex items-stretch gap-2 border text-sm transition-colors duration-300', p.id === x.id ? 'border-gold bg-white shadow-sm' : 'border-line bg-ivory')}>
+                <button type="button" disabled={!canEdit} onClick={() => setP(draftOf(x))} className="min-w-0 flex-1 px-3 py-2.5 text-left enabled:hover:bg-white/70" aria-label={`Modifica ${x.label}`}>
+                  <span className="flex items-center gap-2 font-medium text-navy">
+                    {x.label}
+                    {canEdit && <Pencil className="h-3.5 w-3.5 text-gold-2" />}
                   </span>
-                </span>
+                  <span className="block text-xs text-mist">
+                    {fmtDate(x.from)} → {fmtDate(addDays(x.to, -1))} · {x.roomIds === 'all' ? 'tutte le camere' : `camere ${x.roomIds.map((id) => rooms.find((r) => r.id === id)?.number).join(', ')}`}
+                  </span>
+                  <span className="mt-1 flex flex-wrap gap-1.5 text-xs">
+                    {x.mode === 'fixed' ? (
+                      <>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-navy px-2 py-0.5 font-semibold text-ivory">
+                          <CreditCard className="h-3 w-3" /> {money(x.value, 'it', 2)}
+                        </span>
+                        {cash.enabled && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-line bg-white px-2 py-0.5 text-navy">
+                            <Banknote className="h-3 w-3" /> {money(x.cash ?? Math.round(x.value * (1 - cash.percent / 100) * 100) / 100, 'it', 2)}
+                            {!x.cash && <span className="text-mist">(−{cash.percent}%)</span>}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="rounded-full bg-navy px-2 py-0.5 font-semibold text-ivory">{`${x.value > 0 ? '+' : ''}${x.value}%`} sul prezzo base</span>
+                    )}
+                  </span>
+                </button>
                 {canEdit && (
-                  <button type="button" aria-label="Rimuovi" className="text-terracotta" onClick={() => run(() => removeRatePeriodAction(x.id))}>
+                  <button type="button" aria-label="Rimuovi" className="px-3 text-terracotta hover:bg-terracotta/10" onClick={() => run(() => removeRatePeriodAction(x.id), { onOk: () => p.id === x.id && setP(newDraft(today)) })}>
                     <Trash2 className="h-4 w-4" />
                   </button>
                 )}
@@ -48,31 +94,51 @@ export function PricesManager({ rooms, tonight, periods, canEdit, cash = { enabl
           </ul>
         </Card>
         {canEdit && (
-          <Card title="Nuova variazione">
+          <Card title={editing ? 'Modifica stagione' : 'Nuova stagione'}>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Nome" className="sm:col-span-2">
-                <input className="field" value={p.label} onChange={(e) => setP({ ...p, label: e.target.value })} />
+              <Field label="Nome (es. Alta stagione, Ferragosto)" className="sm:col-span-2">
+                <input className="field" value={p.label} maxLength={60} onChange={(e) => setP({ ...p, label: e.target.value })} />
               </Field>
               <Field label="Dal">
-                <input type="date" className="field" value={p.from} onChange={(e) => setP({ ...p, from: e.target.value })} />
+                <input type="date" className="field" value={p.from} onChange={(e) => setP({ ...p, from: e.target.value, to: p.to <= e.target.value ? addDays(e.target.value, 7) : p.to })} />
               </Field>
-              <Field label="Al (escluso)">
+              <Field label="Al (giorno di partenza)">
                 <input type="date" className="field" value={p.to} min={addDays(p.from, 1)} onChange={(e) => setP({ ...p, to: e.target.value })} />
               </Field>
+              {p.to > p.from && (
+                <p className="-mt-1 text-xs text-mist sm:col-span-2">
+                  Notti dal {fmtDate(p.from)} al {fmtDate(addDays(p.to, -1))} · {nights} {nights === 1 ? 'notte' : 'notti'}
+                </p>
+              )}
               <div className="sm:col-span-2">
-                <Segmented id="pmode" value={p.mode} onChange={(mode) => setP({ ...p, mode })} options={[{ value: 'percent', label: 'Percentuale' }, { value: 'fixed', label: 'Prezzo fisso' }]} />
+                <Segmented id="pmode" value={p.mode} onChange={(mode) => setP({ ...p, mode })} options={[{ value: 'fixed', label: 'Prezzo a notte' }, { value: 'percent', label: 'Percentuale' }]} />
               </div>
-              <Field label={p.mode === 'percent' ? 'Variazione % (es. 15 o −10)' : 'Prezzo per notte €'}>
-                <input className="field" inputMode="decimal" value={p.value} onChange={(e) => setP({ ...p, value: e.target.value })} />
-              </Field>
-              <Field label="Camere">
+              {p.mode === 'fixed' ? (
+                <>
+                  <Field label="Con carta (€ a notte)">
+                    <input className="field" inputMode="decimal" placeholder="es. 120" value={p.value} onChange={(e) => setP({ ...p, value: e.target.value })} />
+                  </Field>
+                  {cash.enabled ? (
+                    <Field label="In contanti (€ a notte)">
+                      <input className="field" inputMode="decimal" placeholder={card >= 1 ? `vuoto = ${money(Math.round(card * (1 - cash.percent / 100) * 100) / 100, 'it', 2)} (−${cash.percent}%)` : 'facoltativo'} value={p.cash} onChange={(e) => setP({ ...p, cash: e.target.value })} />
+                    </Field>
+                  ) : (
+                    <p className="self-end pb-2 text-xs text-mist">Contanti in hotel spenti (Pagamenti).</p>
+                  )}
+                </>
+              ) : (
+                <Field label="Variazione % (es. 15 o −10)" className="sm:col-span-2">
+                  <input className="field" inputMode="decimal" value={p.value} onChange={(e) => setP({ ...p, value: e.target.value })} />
+                </Field>
+              )}
+              <Field label="Camere" className="sm:col-span-2">
                 <NiceSelect
                   className="w-full"
                   label="Camere"
                   value={p.scope}
                   onChange={(v) => setP({ ...p, scope: v })}
                   options={[
-                    { value: 'all', label: 'Tutte' },
+                    { value: 'all', label: 'Tutte le camere' },
                     { value: 'some', label: 'Solo alcune' },
                   ]}
                 />
@@ -80,16 +146,24 @@ export function PricesManager({ rooms, tonight, periods, canEdit, cash = { enabl
               {p.scope === 'some' && (
                 <div className="flex flex-wrap gap-1.5 sm:col-span-2">
                   {rooms.map((r) => (
-                    <button key={r.id} type="button" onClick={() => setP({ ...p, roomIds: p.roomIds.includes(r.id) ? p.roomIds.filter((x) => x !== r.id) : [...p.roomIds, r.id] })} className={cn('border px-2.5 py-1.5 text-xs', p.roomIds.includes(r.id) ? 'border-navy bg-navy text-ivory' : 'border-line')}>
+                    <button key={r.id} type="button" onClick={() => setP({ ...p, roomIds: p.roomIds.includes(r.id) ? p.roomIds.filter((x) => x !== r.id) : [...p.roomIds, r.id] })} className={cn('border px-2.5 py-1.5 text-xs transition-colors', p.roomIds.includes(r.id) ? 'border-navy bg-navy text-ivory' : 'border-line hover:border-navy/40')}>
                       {r.number}
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            <Button className="mt-4 w-full" disabled={pending || p.to <= p.from || !Number(p.value.replace(',', '.')) || (p.scope === 'some' && !p.roomIds.length)} onClick={() => run(() => addRatePeriodAction({ label: p.label, from: p.from, to: p.to, roomIds: p.scope === 'all' ? 'all' : p.roomIds, mode: p.mode, value: Number(p.value.replace(',', '.')) }))}>
-              Salva variazione
-            </Button>
+            {problem && (p.value.trim() || editing) && <p className="mt-3 text-xs text-terracotta">{problem}</p>}
+            <div className="mt-4 flex gap-2">
+              <Button className="flex-1" disabled={pending || Boolean(problem)} onClick={save}>
+                {editing ? 'Salva modifiche' : 'Salva stagione'}
+              </Button>
+              {editing && (
+                <Button variant="ghost" disabled={pending} onClick={() => setP(newDraft(today))}>
+                  Annulla
+                </Button>
+              )}
+            </div>
           </Card>
         )}
       </div>

@@ -26,22 +26,35 @@ async function call<T = unknown>(method: string, body: Record<string, unknown>, 
 }
 
 export type InlineButton = { text: string; callback_data: string };
+/** Buttons under the typing field (private chats): each one sends its own text. */
+export type ReplyKeyboard = { keyboard: { text: string }[][]; resize_keyboard?: boolean; is_persistent?: boolean; input_field_placeholder?: string };
+export type SendOpts = { replyTo?: number; keyboard?: ReplyKeyboard };
 
-/** Plain assistant output, split without breaking emoji or HTML entities. */
-export async function sendText(chatId: string, text: string, buttons?: InlineButton[][]): Promise<void> {
+/**
+ * Plain assistant output, split without breaking emoji or HTML entities, made easier to read: the
+ * first line becomes a bold title when a longer answer follows, **words** become bold.
+ */
+export async function sendText(chatId: string, text: string, buttons?: InlineButton[][], opts: SendOpts = {}): Promise<void> {
   const chunks = splitTelegramText(text);
   for (const [index, chunk] of chunks.entries()) {
-    await sendMessage(chatId, escapeHtml(chunk), index === chunks.length - 1 ? buttons : undefined);
+    let html = escapeHtml(chunk).replace(/\*\*([^*\n]{1,120})\*\*/g, '<b>$1</b>');
+    if (index === 0) {
+      const nl = html.indexOf('\n');
+      if (nl > 0 && nl <= 90 && !html.slice(0, nl).includes('<b>')) html = `<b>${html.slice(0, nl)}</b>${html.slice(nl)}`;
+    }
+    const last = index === chunks.length - 1;
+    await sendMessage(chatId, html, last ? buttons : undefined, { ...(index === 0 && opts.replyTo ? { replyTo: opts.replyTo } : {}), ...(last && opts.keyboard ? { keyboard: opts.keyboard } : {}) });
   }
 }
 
-export function sendMessage(chatId: string, text: string, buttons?: InlineButton[][]): Promise<unknown> {
+export function sendMessage(chatId: string, text: string, buttons?: InlineButton[][], opts: SendOpts = {}): Promise<unknown> {
   return call('sendMessage', {
     chat_id: chatId,
     text,
     parse_mode: 'HTML',
     disable_web_page_preview: true,
-    ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
+    ...(opts.replyTo ? { reply_parameters: { message_id: opts.replyTo, allow_sending_without_reply: true } } : {}),
+    ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : opts.keyboard ? { reply_markup: opts.keyboard } : {}),
   });
 }
 

@@ -7,7 +7,8 @@ import { addDays, fmtDate, fmtDateLong, todayISO } from '@/lib/dates';
 import { money, ospiti } from '@/lib/utils';
 import { mutate, newId, readDb } from '../db/store';
 import { audit } from '../events';
-import { can, type Permission, type SafeUser } from '../auth/guard';
+import { can, type Permission } from '../auth/permissions';
+import type { SafeUser } from '../auth/guard';
 import { arrivalsOn, departuresOn, freeRoomsOn, rangeStats, DIRECT_SOURCES } from '../stats';
 import { addBlock, periodLabel, removeBlock, saveRoom, setPeriodPrice, setRoomPrice, setRoomsPrice, setRoomVisibility } from '../rooms';
 import { markPaid, refundableAmount, sourceLabel } from '../bookings';
@@ -20,6 +21,7 @@ import { priceIntent } from './price-intent';
 import type { UiStep } from '@/lib/assist';
 import { generateImage, lookAt, lookAtMany, readSavedImage, saveImage, visionConfigured } from '../ai/images';
 import { detectLang, LANG_NAME, localize, localizeSteps, playbookFor, replayFor } from './extras';
+import { autoInstantSummary, hotelIntent, hotelToolsHelp, markupSummary, paymentsStatus, pricesOverview, setAutoInstant, setMarkup, setTax, taxSummary, todaySummary, type MarkupArgs, type TaxArgs } from './hotel-tools';
 
 /**
  * Owner assistant. Natural language → one of a fixed set of tools with validated arguments.
@@ -369,6 +371,51 @@ const TOOLS: Record<string, ToolDef> = {
       return `Fatto: descrizione aggiornata. Le traduzioni sono segnate “da tradurre” finché non le approvi.`;
     },
   },
+  today: {
+    perm: 'bookings.manage',
+    confirm: false,
+    describe: 'Riepilogo di oggi: arrivi, partenze, camere libere, cosa incassare. args: {}',
+    schema: z.object({}),
+    run: () => todaySummary(readDb(), todayISO()),
+  },
+  prices_overview: {
+    perm: 'bookings.manage',
+    confirm: false,
+    describe: 'Mostra i prezzi: base con carta e in contanti, stagioni/eventi, aumento prezzi online, tassa di soggiorno. args: {}',
+    schema: z.object({}),
+    run: () => pricesOverview(readDb(), todayISO()),
+  },
+  payments_status: {
+    perm: 'payments.manage',
+    confirm: false,
+    describe: 'Stato dei pagamenti con carta (Stripe dell’hotel), bonifici, bonifico immediato e quanto si può ricevere subito. args: {}',
+    schema: z.object({}),
+    run: () => paymentsStatus(readDb()),
+  },
+  set_online_markup: {
+    perm: 'prices.edit',
+    confirm: true,
+    describe: 'Accende/spegne l’aumento dei prezzi con carta sul sito (percentuale, i contanti non cambiano). args: {enabled, percent?}',
+    schema: z.object({ enabled: z.boolean(), percent: z.number().min(0.5).max(20).optional() }),
+    summary: (a: MarkupArgs, db: DB) => markupSummary(a, db),
+    run: (a: MarkupArgs, ctx) => setMarkup(a, ctx.user.name),
+  },
+  set_tourist_tax: {
+    perm: 'prices.edit',
+    confirm: true,
+    describe: 'Accende/spegne la tassa di soggiorno (euro a persona adulta a notte, si paga in hotel). args: {enabled, amount?}',
+    schema: z.object({ enabled: z.boolean(), amount: z.number().min(0).max(20).optional() }),
+    summary: (a: TaxArgs, db: DB) => taxSummary(a, db),
+    run: (a: TaxArgs, ctx) => setTax(a, ctx.user.name),
+  },
+  set_auto_instant: {
+    perm: 'payments.manage',
+    confirm: true,
+    describe: 'Accende/spegne il bonifico immediato automatico dopo ogni pagamento con carta. args: {enabled}',
+    schema: z.object({ enabled: z.boolean() }),
+    summary: (a: { enabled: boolean }) => autoInstantSummary(a),
+    run: (a: { enabled: boolean }, ctx) => setAutoInstant(a, ctx.user.name),
+  },
   set_reports: {
     perm: 'automations.manage',
     confirm: true,
@@ -398,6 +445,7 @@ const HELP = [
   '• “Mostrami le prenotazioni di dicembre”',
   '• “Crea una descrizione più elegante per la camera 108”',
   '• “Spegni il report della sera” / “Manda il report alle 22” / “Riaccendi i messaggi del mattino”',
+  ...hotelToolsHelp,
   '• “Come aggiungo una camera?” — ti spiego passo passo',
   'Puoi anche mandarmi un vocale. Ogni modifica ti chiede conferma prima di essere eseguita.',
 ].join('\n');
@@ -415,6 +463,9 @@ function ruleIntent(text: string, today: string): Intent {
   // the messages of the day on Telegram: "spegni il report", "wyłącz raporty", "turn off the reports"
   const reports = reportsIntent(t);
   if (reports) return { tool: 'set_reports', args: reports };
+  // the day, prices and seasons, payments, online increase, tourist tax, instant payouts
+  const hotel = hotelIntent(t, text);
+  if (hotel) return hotel;
   if (/(scriv|mand|invia|prepara|wyslij|napisz)/.test(t) && /(e-?mail|messaggi|wiadomo|client|ospit|gosc|klient)/.test(t) && !/^come\b|\bcome (si|faccio|posso)\b/.test(t)) return { special: 'email' };
   if (code && /(registra|segna|incass|pagat|paga|zaplac|placi)/.test(t) && /(contant|cash|carta|pos\b|bonific|gotow|kart)/.test(t)) {
     return { tool: 'record_payment', args: { code, method: /contant|cash|gotow/.test(t) ? 'contanti' : /bonific/.test(t) ? 'bonifico' : 'carta', ...(priceValue ? { amount: priceValue } : {}) } };
@@ -775,6 +826,12 @@ const GUIDE: { k: RegExp; a: string }[] = [
   { k: /(planning|calendar|occupaz|grafik)/, a: 'Planning: righe = camere, colonne = giorni. Le barre sono le notti occupate (navy confermate, oro in attesa di pagamento). Scorri di lato con il dito: i numeri delle camere restano fermi a sinistra.' },
   { k: /(\bai\b|groq|intelligenz|chiave|klucz|\bkey\b)/, a: 'AI gratuita: Impostazioni → Collegamenti → Groq → “Collega”. Crea la chiave gratis su console.groq.com (API Keys), incollala e premi Collega: da quel momento capisco i vocali, scrivo le email e traduco.' },
   { k: /(tradu|lingu|tlumacz|jezyk)/, a: 'Traduzioni: camere ed email vengono tradotte da sole nelle lingue del sito. Puoi correggere a mano la traduzione di una camera nella sua scheda.' },
+  { k: /(stagion|sezon|season|ferragosto|alta|bassa|period|event)/, a: 'Prezzi per stagione: Prezzi → “Nuova stagione”. Scegli dal / al, scrivi il prezzo a notte con carta e (se vuoi) quello in contanti, tutte le camere o solo alcune, poi “Salva stagione”. Per cambiarla tocca la stagione nell’elenco, modifica e “Salva modifiche”. Oppure scrivimi “prezzo di agosto 150 euro, 140 in contanti”.' },
+  { k: /(aument|ricaric|markup|narzut|podwyz|prezzi online)/, a: 'Aumento prezzi online: Prezzi → “Tariffe e sconti” → “Aumento prezzi online”. Accendi l’interruttore e scegli la percentuale (es. 1%): sul sito i prezzi con carta salgono, i contanti restano uguali. Oppure scrivimi “accendi l’aumento prezzi online dell’1%”.' },
+  { k: /(tassa|imposta|soggiorno|oplat|podatek|tourist tax)/, a: 'Tassa di soggiorno: Prezzi → “Tariffe e sconti” → “Tassa di soggiorno”. Accendila, scrivi l’importo a persona a notte e il periodo: il sito la mostra agli ospiti e si paga in hotel (solo adulti).' },
+  { k: /(subito|immediat|istantane|natychmiast|instant|wyplat|bonific)/, a: 'Soldi subito: in “Pagamenti” c’è “Ricevi subito” (manda ora il saldo sulla carta dell’hotel) e l’interruttore “Automatico: ogni pagamento arriva subito”. Serve il conto Stripe dell’hotel collegato con una carta di debito. Scrivimi “pagamenti” per vedere quanto puoi ricevere.' },
+  { k: /(posta|casella|gmail|inbox|skrzynk|poczt)/, a: 'Posta: apri “Posta”, scegli Gmail (o il tuo provider), scrivi l’indirizzo e la “Password per le app” di Google (myaccount.google.com/apppasswords). Lascia acceso “Invia da qui anche le email agli ospiti”: conferme e promemoria partono dal tuo indirizzo e le risposte arrivano qui.' },
+  { k: /(grupp|grup|group)/, a: 'Telegram in gruppo: ognuno collega prima il proprio Telegram in privato col bot (Automazioni → Telegram → codice). Poi aggiungi il bot al gruppo e chiamalo con “Bot, …” oppure rispondendo a un suo messaggio. Se vuoi gli avvisi dell’hotel nel gruppo, scrivi lì /collega CODICE.' },
 ];
 
 async function chatAnswer(text: string, lang: Locale = 'it', replyTo?: string): Promise<AssistantReply> {

@@ -242,6 +242,39 @@ export function addRatePeriod(p: Omit<RatePeriod, 'id' | 'createdAt'>, actor: st
 }
 
 /**
+ * A season or event in Prezzi, new or changed in place (same id: it keeps its place in the list,
+ * so it still wins over the ones before it). A fixed price can carry its own cash price.
+ */
+export function saveRatePeriod(input: { id?: string | null; label: string; from: string; to: string; roomIds: string[] | 'all'; mode: 'fixed' | 'percent'; value: number; cash?: number | null }, actor: string): RatePeriod {
+  if (!isValidISODate(input.from) || !isValidISODate(input.to) || input.to <= input.from) throw new RoomError('Scegli le date: “al” deve venire dopo “dal”.');
+  const label = input.label.trim().slice(0, 60) || periodLabel(input.from, input.to);
+  const value = Math.round(input.value * 100) / 100;
+  if (input.mode === 'fixed' && !(value >= 1 && value <= 5000)) throw new RoomError('Prezzo con carta tra 1 e 5000 €.');
+  if (input.mode === 'percent' && (value < -90 || value > 300 || value === 0)) throw new RoomError('Variazione percentuale tra −90% e +300%.');
+  const cash = input.mode === 'fixed' && typeof input.cash === 'number' && input.cash > 0 ? Math.round(input.cash * 100) / 100 : null;
+  if (cash !== null && cash > value) throw new RoomError('Il prezzo in contanti non può superare quello con carta.');
+  return mutate((db) => {
+    const roomIds: RatePeriod['roomIds'] = input.roomIds === 'all' ? 'all' : [...new Set(input.roomIds)].filter((id) => db.rooms.some((r) => r.id === id));
+    if (roomIds !== 'all' && !roomIds.length) throw new RoomError('Scegli almeno una camera.');
+    const fields = { label, from: input.from, to: input.to, roomIds, mode: input.mode, value };
+    const what = `${label}: ${fmtDate(input.from)} → ${fmtDate(addDays(input.to, -1))} · ${input.mode === 'fixed' ? `€ ${value}${cash !== null ? ` · contanti € ${cash}` : ''}` : `${value > 0 ? '+' : ''}${value}%`}`;
+    const old = input.id ? db.ratePeriods.find((x) => x.id === input.id) : null;
+    if (input.id && !old) throw new RoomError('Questa variazione non esiste più: ricarica la pagina.');
+    if (old) {
+      Object.assign(old, fields);
+      if (cash !== null) old.cash = cash;
+      else delete old.cash;
+      audit(db, actor, 'rate_period', 'pricing', old.id, `Modificata · ${what}`);
+      return old;
+    }
+    const p: RatePeriod = { ...fields, ...(cash !== null ? { cash } : {}), id: newId('rp-'), createdAt: new Date().toISOString() };
+    db.ratePeriods.push(p);
+    audit(db, actor, 'rate_period', 'pricing', p.id, what);
+    return p;
+  });
+}
+
+/**
  * "These rooms cost X in these dates" (months or any dates), or `price: null` = back to the base
  * price there. Older per-room prices of those rooms in those dates are replaced, not stacked.
  */

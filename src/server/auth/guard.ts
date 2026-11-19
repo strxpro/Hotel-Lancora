@@ -1,45 +1,14 @@
 import 'server-only';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import type { Role, User } from '@/lib/types';
+import type { User } from '@/lib/types';
 import { readDb } from '../db/store';
 import { SESSION_COOKIE, verifySession } from './session';
 import { stampOf } from './login';
 
-export type Permission =
-  | 'rooms.edit'
-  | 'rooms.delete'
-  | 'prices.edit'
-  | 'bookings.manage'
-  | 'payments.manage'
-  | 'settings.edit'
-  | 'users.manage'
-  | 'automations.manage'
-  | 'stats.view'
-  | 'assistant.use'
-  | 'marketing.manage'
-  | 'guests.gdpr';
+export { can, type Permission } from './permissions';
+import { can, type Permission } from './permissions';
 
-const PERMS: Record<Permission, Role[]> = {
-  'rooms.edit': ['admin', 'staff'],
-  'rooms.delete': ['admin'],
-  'prices.edit': ['admin'],
-  'bookings.manage': ['admin', 'staff'],
-  'payments.manage': ['admin'],
-  'settings.edit': ['admin'],
-  'users.manage': ['admin'],
-  'automations.manage': ['admin'],
-  'stats.view': ['admin', 'staff'],
-  'assistant.use': ['admin', 'staff'],
-  'marketing.manage': ['admin'],
-  'guests.gdpr': ['admin'],
-};
-
-export function can(role: Role, perm: Permission): boolean {
-  return PERMS[perm].includes(role);
-}
-
-/** What the pages and actions get: never the password fingerprint nor the phone-code key. */
 export type SafeUser = Omit<User, 'passwordHash' | 'twoFactor'> & { twoFactorOn: boolean };
 
 export class AuthError extends Error {

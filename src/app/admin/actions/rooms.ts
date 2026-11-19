@@ -1,7 +1,7 @@
 'use server';
 import { z } from 'zod';
 import { act, UserError } from '@/server/action';
-import { addBlock, addRatePeriod, deleteRoom, removeBlock, removeRatePeriod, saveRoom, saveTranslation, setPeriodPrice, setRoomPrice, setRoomsPrice, setRoomVisibility } from '@/server/rooms';
+import { addBlock, addRatePeriod, deleteRoom, removeBlock, removeRatePeriod, saveRatePeriod, saveRoom, saveTranslation, setPeriodPrice, setRoomPrice, setRoomsPrice, setRoomVisibility } from '@/server/rooms';
 import { improveRoomText, translateFields, translateRoomText, translationProvider } from '@/server/ai/content';
 import { mutate, readDb } from '@/server/db/store';
 import { audit } from '@/server/events';
@@ -232,6 +232,25 @@ export async function setPeriodPriceAction(raw: unknown) {
     const p = z.object({ roomIds: z.array(z.string()).min(1).max(100), ranges: z.array(z.object({ from: z.string(), to: z.string() })).min(1).max(24), price: z.number().min(1).max(5000).nullable(), cash: z.number().min(1).max(5000).nullable().optional() }).parse(raw);
     return setPeriodPrice(p, u.name);
   }, 'Prezzi del periodo salvati: già visibili sul sito.');
+}
+
+/** Prezzi → Variazioni per periodo: a new season/event, or a change to one (id), with card and cash price. */
+export async function saveRatePeriodAction(raw: unknown) {
+  return act('prices.edit', (u) => {
+    const p = z
+      .object({
+        id: z.string().max(60).nullable().optional(),
+        label: z.string().trim().max(60),
+        from: z.string(),
+        to: z.string(),
+        roomIds: z.union([z.literal('all'), z.array(z.string()).min(1).max(100)]),
+        mode: z.enum(['fixed', 'percent']),
+        value: z.number(),
+        cash: z.number().nullable().optional(),
+      })
+      .parse(raw);
+    saveRatePeriod(p, u.name);
+  }, 'Salvato: i nuovi prezzi sono già sul sito.');
 }
 
 export async function removeRatePeriodAction(id: string) {

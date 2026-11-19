@@ -10,6 +10,7 @@ import { amenityLabel } from '@/content/amenities';
 import { getDictionary } from '@/lib/i18n/dictionaries';
 import { localizeRoom } from '../rooms';
 import { onlineRoom } from '@/lib/online-price';
+import { cardPaymentsReady } from '../payments/stripe';
 
 export interface ChatAction {
   label: string;
@@ -200,6 +201,20 @@ export function answerKB(db: DB, message: string, lang: Locale, today: string): 
   return reply('fallback', fillT(T.fallback[lang], { phone: c.phone, email: c.email }), [contactAction]);
 }
 
+/** How guests pay, what the price includes, the tourist tax: public facts for the chat. */
+function payInfo(db: DB): string[] {
+  const p = db.settings.payments;
+  const card = cardPaymentsReady(db) && p.allowOnline !== false;
+  const due = p.mode === 'full' ? 'tutto il soggiorno al momento della prenotazione' : p.mode === 'deposit_percent' ? `un acconto del ${p.depositPercent}% alla prenotazione, il resto in hotel` : `un acconto di € ${p.depositFixed} alla prenotazione, il resto in hotel`;
+  const tax = db.settings.pricing?.touristTax;
+  const md = (x: string) => `${Number(x.slice(3))}/${Number(x.slice(0, 2))}`;
+  return [
+    `PAGAMENTO: ${card ? `con carta sul sito (${due})` : 'non si paga online: si paga in hotel'}${p.allowCashAtHotel ? `${card ? ', oppure ' : ', '}in contanti in hotel con un prezzo più basso (circa −${p.cashDiscountPercent}%, il sito mostra entrambi i prezzi)` : ''}. I prezzi sul sito sono quelli finali per la camera.`,
+    `IL PREZZO COMPRENDE: ${db.settings.pricing?.board === 'breakfast' ? 'pernottamento e colazione' : 'solo il pernottamento (colazione non inclusa)'}.`,
+    tax?.enabled ? `TASSA DI SOGGIORNO: € ${tax.amount} a persona (solo adulti) a notte dal ${md(tax.from)} al ${md(tax.to)}${tax.maxNights ? `, al massimo ${tax.maxNights} notti` : ''}; non è nel prezzo, si paga in hotel.` : 'TASSA DI SOGGIORNO: non prevista.',
+  ];
+}
+
 /** Grounding for generative mode. Contains ONLY public data — never guests or bookings. */
 export function buildSystemPrompt(db: DB, lang: Locale, today: string): string {
   const h = db.settings.hotel;
@@ -215,12 +230,13 @@ export function buildSystemPrompt(db: DB, lang: Locale, today: string): string {
   return [
     `Sei l'assistente del sito di ${h.name}, hotel ${h.stars} stelle a ${h.city} (${h.province}), Sardegna. Oggi è ${today}.`,
     `LINGUA: rispondi ESCLUSIVAMENTE in ${LANG_NAME[lang]}, dall'inizio alla fine. I dati qui sotto sono in italiano: traducili, non mescolare mai le lingue (restano invariati solo nomi propri, telefono ed email).`,
-    'Stile: cortese, essenziale, massimo 90 parole, niente markdown.',
+    'Stile: caldo e accogliente come una brava receptionist, frasi brevi e chiare, massimo 90 parole, niente markdown. Al massimo una emoji adatta. Se serve, chiudi con un passo utile (es. scegliere le date sul sito o scrivere alla reception).',
     'REGOLE: usa solo i dati qui sotto. Non inventare servizi, prezzi, orari o disponibilità. Se un dato manca o è "non confermato", dillo e suggerisci di contattare la reception.',
     'Non hai accesso a dati di prenotazioni o ospiti e non devi chiederli. Non chiedere dati di pagamento.',
     `Contatti reception: ${h.phone} · ${h.email}. Indirizzo: ${h.addressVerified ? `${h.addressLine}, ${h.postalCode} ${h.city}` : 'da confermare con la reception'}.`,
     `Check-in ${h.checkInFrom}–${h.checkInTo}, check-out entro ${h.checkOutBy}${h.factsVerified ? '' : db.settings.demoMode ? ' (dati dimostrativi)' : ' (da confermare con la reception)'}.`,
     `Cancellazione: ${cancelText('it', db.settings.payments)} ${db.settings.payments.cancellationPolicy}`,
+    ...payInfo(db),
     'CAMERE:',
     ...rooms,
     'DISPONIBILITÀ PROSSIME NOTTI (1 notte, 1 ospite):',
