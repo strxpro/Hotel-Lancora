@@ -373,6 +373,8 @@ export interface Settings {
     updatedAt: string | null;
     /** demo only: the onboarding was simulated (no Stripe platform key) */
     simulated: boolean;
+    /** every card payment goes on to the hotel's debit card at once (Stripe Instant Payouts, with its cost) */
+    autoInstant?: boolean;
     businessName: string | null;
     bankLast4: string | null;
     requirements: string[];

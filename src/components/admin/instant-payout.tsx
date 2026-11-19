@@ -4,7 +4,7 @@ import { AnimatePresence, animate, motion } from 'motion/react';
 import { ArrowUpRight, Check, ChevronRight, Clock, CreditCard, Hourglass, Loader2, Wallet, Zap } from 'lucide-react';
 import { cn, money } from '@/lib/utils';
 import { Dialog, useToast } from './ui';
-import { instantInfoAction, instantPayoutAction, stripeDashboardAction } from '@/app/admin/actions/payments';
+import { instantInfoAction, instantPayoutAction, setAutoInstantAction, stripeDashboardAction } from '@/app/admin/actions/payments';
 import type { InstantView } from '@/server/payments/instant';
 
 const EASE = [0.22, 0.61, 0.12, 1] as const;
@@ -37,8 +37,34 @@ const LINE: Record<InstantView['state'], (v: View) => string> = {
  * "Ricevi subito": a tile in the account card. It reads what can leave now, the owner picks how
  * much (all of it, or less) and confirms; the money reaches the debit card in about 30 minutes.
  */
-export function InstantPayout() {
+/** "Ogni pagamento arriva subito": the automatic version, with its cost said plainly. */
+function AutoSwitch({ on, onChange, busy }: { on: boolean; onChange: (v: boolean) => void; busy: boolean }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} disabled={busy} onClick={() => onChange(!on)} data-testid="instant-auto" className={cn('mt-4 flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-colors', on ? 'border-navy bg-white' : 'border-line bg-white/60 hover:border-navy/40')}>
+      <span className={cn('relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors', on ? 'bg-navy' : 'bg-line')}>
+        <motion.span layout transition={{ type: 'spring', stiffness: 500, damping: 30 }} className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow', on ? 'right-0.5' : 'left-0.5')} />
+      </span>
+      <span className="text-[0.8rem] leading-snug text-charcoal/85">
+        <span className="block font-semibold text-navy">Automatico: ogni pagamento arriva subito</span>
+        Appena un ospite paga con la carta, i soldi partono da soli verso la tua carta (di solito entro 30 minuti). Ogni bonifico immediato ha il costo del servizio di Stripe; spento, arrivano gratis con il bonifico normale.
+      </span>
+    </button>
+  );
+}
+
+export function InstantPayout({ auto: autoInitial = false }: { auto?: boolean }) {
   const toast = useToast();
+  const [auto, setAuto] = useState(autoInitial);
+  const [savingAuto, setSavingAuto] = useState(false);
+  const switchAuto = async (v: boolean) => {
+    setSavingAuto(true);
+    const r = await setAutoInstantAction(v).catch(() => null);
+    setSavingAuto(false);
+    if (r?.ok) {
+      setAuto(v);
+      toast('ok', r.message ?? 'Salvato.');
+    } else toast('error', r && !r.ok ? r.error : 'Non salvato: riprova.');
+  };
   const [view, setView] = useState<View | null | 'loading'>('loading');
   const [open, setOpen] = useState(false);
   const [all, setAll] = useState(true);
@@ -107,7 +133,7 @@ export function InstantPayout() {
           <Zap className="h-4 w-4" />
         </span>
         <span className="relative min-w-0 flex-1">
-          <span className={cn('block text-[0.6rem] font-semibold uppercase tracking-[0.16em]', v?.state === 'ready' ? 'text-ivory/60' : 'text-mist')}>Ricevi subito</span>
+          <span className={cn('block text-[0.6rem] font-semibold uppercase tracking-[0.16em]', v?.state === 'ready' ? 'text-ivory/60' : 'text-mist')}>Ricevi subito{auto ? ' · automatico' : ''}</span>
           {v ? <span className="block truncate text-sm font-semibold">{LINE[v.state](v)}</span> : <span className="mt-1 block h-3.5 w-40 animate-pulse rounded-full bg-sand-2" aria-label="Controllo il saldo" />}
           {v?.state === 'ready' && <span className="block truncate text-[0.7rem] text-ivory/60">sulla tua carta in circa 30 minuti</span>}
         </span>
@@ -190,6 +216,7 @@ export function InstantPayout() {
                 </li>
               </ul>
               <p className="mt-3 text-[0.75rem] leading-relaxed text-mist">Quello che non ricevi ora arriva come sempre con il bonifico normale.</p>
+              <AutoSwitch on={auto} onChange={switchAuto} busy={savingAuto} />
               <motion.button whileTap={{ scale: 0.97 }} type="button" disabled={!valid || sending} onClick={send} data-testid="instant-send" className="mt-5 flex h-13 w-full items-center justify-center gap-2 rounded-full bg-gold px-5 py-3.5 text-[0.95rem] font-semibold text-navy-3 shadow-[0_18px_40px_-20px_rgba(196,154,82,0.9)] disabled:opacity-50">
                 {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} {valid ? `Ricevi ${eur(amount)} adesso` : 'Scegli l’importo'}
               </motion.button>
@@ -211,6 +238,7 @@ export function InstantPayout() {
                   {opening ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />} Aggiungi la carta su Stripe
                 </button>
               )}
+              {(v.state === 'no_card' || v.state === 'not_enabled' || v.state === 'empty') && <AutoSwitch on={auto} onChange={switchAuto} busy={savingAuto} />}
               {v.state === 'error' && (
                 <button type="button" onClick={() => { setView('loading'); void load(); }} className="btn btn-navy mt-6 w-full">
                   Riprova

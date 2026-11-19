@@ -3,7 +3,7 @@ import { cancelRefund } from '@/lib/cancellation';
 import type { Booking, BookingSource, DB, Payment, PaymentProvider } from '@/lib/types';
 import { amountDueNow, findPromo, isBookingActive, isPubliclyBookable, quoteStay, roomConflicts, round2, stayCashPercent } from '@/lib/availability';
 import { addDays, diffDays, fmtDate, isValidISODate, todayISO } from '@/lib/dates';
-import { mutate, newId, newToken, readDb } from './db/store';
+import { afterCommit, mutate, newId, newToken, readDb } from './db/store';
 import { audit, guestName, notify, queueEmail } from './events';
 import { notti, ospiti } from '@/lib/utils';
 
@@ -141,6 +141,8 @@ export function confirmPayment(bookingId: string, p: { amount: number; provider:
     }
     notify(db, 'nuovo_pagamento', `Pagamento ricevuto · € ${pay.amount.toFixed(2)}`, `${b.code} · ${guestName(b)} · ${p.provider === 'simulazione' ? 'pagamento simulato (demo)' : p.provider === 'stripe_test' ? 'Stripe test mode' : p.provider}`, `/admin/pagamenti`);
     audit(db, p.provider === 'stripe_test' ? 'Stripe webhook' : 'Sito web', 'payment', 'booking', b.id, `${b.code} pagato € ${pay.amount.toFixed(2)} (${p.provider})`);
+    // "Ricevi subito in automatico": the money goes on to the hotel's card (only when switched on)
+    if ((p.provider === 'stripe' || p.provider === 'stripe_test') && db.settings.stripeConnect.autoInstant) afterCommit(() => import('./payments/instant').then((m) => m.autoInstantAfterPayment()));
     return b;
   });
 }

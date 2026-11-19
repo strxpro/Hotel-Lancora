@@ -70,6 +70,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
             businessName: c.businessName,
             bankLast4: c.bankLast4,
             requirements: c.requirements,
+            autoInstant: c.autoInstant ?? false,
             updatedAt: c.updatedAt,
           }}
         />

@@ -165,3 +165,13 @@ export async function instantPayoutAction(raw: unknown) {
     }
   });
 }
+
+/** "Ricevi subito in automatico": on or off (each automatic transfer has Stripe's cost). */
+export async function setAutoInstantAction(on: boolean) {
+  return act('payments.manage', (u) => {
+    mutate((db) => {
+      db.settings.stripeConnect.autoInstant = Boolean(on);
+      audit(db, u.name, 'instant_payout_auto', 'settings', null, on ? 'Bonifico immediato automatico acceso: ogni pagamento con carta va subito sulla carta dell’hotel' : 'Bonifico immediato automatico spento');
+    });
+  }, on ? 'Acceso: ogni pagamento con carta arriverà subito sulla carta.' : 'Spento: i soldi arrivano con il bonifico normale.');
+}

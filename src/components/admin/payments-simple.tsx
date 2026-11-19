@@ -139,7 +139,7 @@ export function AccountCard({ c, mode, demo = true }: { c: ConnectView; mode: 't
               </span>
               <span className="text-xs font-semibold text-navy underline-offset-2 hover:underline">Cambia</span>
             </button>
-            {(mode !== 'off' || c.simulated) && <InstantPayout />}
+            {(mode !== 'off' || c.simulated) && <InstantPayout auto={c.autoInstant ?? false} />}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {!c.simulated && (
                 <button type="button" disabled={pending} onClick={() => go(stripeDashboardAction)} className="flex h-9 items-center gap-1.5 rounded-full border border-line px-3.5 text-xs font-semibold text-navy hover:border-navy">

@@ -156,3 +156,40 @@ export async function sendInstant(db: DB, amount: number): Promise<InstantResult
     throw new InstantError(instantErrorText(e));
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* automatic: every card payment goes on to the hotel's card at once   */
+/* ------------------------------------------------------------------ */
+
+const ga = globalThis as unknown as { __lancoraAutoInstant?: Promise<void> };
+
+/**
+ * "Ricevi subito in automatico" (Pagamenti): right after a guest pays by card, what can leave now is
+ * sent to the hotel's debit card. Off unless the owner switched it on; each transfer has Stripe's
+ * cost. One at a time (two payments a second apart make one transfer), never blocks the booking.
+ */
+export function autoInstantAfterPayment(): void {
+  const run = async () => {
+    const { readDb, mutate } = await import('../db/store');
+    const { audit, notify } = await import('../events');
+    const db = readDb();
+    if (!db.settings.stripeConnect.autoInstant || db.settings.stripeConnect.simulated) return;
+    // the card payment reaches the hotel's balance a moment after the confirmation
+    await new Promise((r) => setTimeout(r, 8000));
+    const v = await instantView(readDb());
+    if (!v || v.state !== 'ready' || v.max < INSTANT_MIN) {
+      if (v && v.state !== 'empty' && v.state !== 'ready') mutate((d) => audit(d, 'Sistema', 'instant_payout_auto', 'settings', null, `Bonifico immediato automatico non partito (${v.state === 'no_card' ? 'manca la carta di debito' : v.state === 'not_enabled' ? 'non ancora attivo su Stripe' : 'Stripe non risponde'}): arriva con il bonifico normale`));
+      return;
+    }
+    try {
+      const r = await sendInstant(readDb(), v.max);
+      mutate((d) => {
+        audit(d, 'Sistema', 'instant_payout_auto', 'settings', r.id, `Bonifico immediato automatico di € ${r.amount.toFixed(2)} verso ${r.to ?? 'carta'}`);
+        notify(d, 'nuovo_pagamento', `In arrivo sulla carta · € ${r.amount.toFixed(2)}`, `Bonifico immediato automatico verso ${r.to ?? 'la carta dell’hotel'}: di solito entro 30 minuti.`, '/admin/pagamenti');
+      });
+    } catch (e) {
+      mutate((d) => audit(d, 'Sistema', 'instant_payout_auto', 'settings', null, `Bonifico immediato automatico non partito: ${(e as Error).message.slice(0, 160)}`));
+    }
+  };
+  ga.__lancoraAutoInstant = (ga.__lancoraAutoInstant ?? Promise.resolve()).then(run, run).catch((e) => console.error('[instant]', (e as Error).message));
+}
