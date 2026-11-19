@@ -206,7 +206,7 @@ export function InstantPayout({ auto: autoInitial = false }: { auto?: boolean })
 
               <ul className="mt-4 space-y-2 text-[0.82rem] text-navy">
                 <li className="flex items-center gap-3 rounded-2xl bg-white px-4 py-2.5 ring-1 ring-line">
-                  <CreditCard className="h-4 w-4 shrink-0 text-gold-2" /> <span className="flex-1">Arriva su</span> <strong className="text-right">{v.to}</strong>
+                  <CreditCard className="h-4 w-4 shrink-0 text-gold-2" /> <span className="flex-1">Arriva su</span> <strong className="text-right">{v.to ?? 'la carta di debito collegata su Stripe'}</strong>
                 </li>
                 <li className="flex items-center gap-3 rounded-2xl bg-white px-4 py-2.5 ring-1 ring-line">
                   <Clock className="h-4 w-4 shrink-0 text-gold-2" /> <span className="flex-1">Quando</span> <strong className="text-right">di solito entro 30 minuti, anche nel weekend</strong>
@@ -229,7 +229,7 @@ export function InstantPayout({ auto: autoInitial = false }: { auto?: boolean })
               </p>
               <p className="mt-2 text-sm leading-relaxed text-charcoal/80">
                 {v.state === 'no_card' && 'I soldi arrivano in circa 30 minuti su una carta di debito (Visa o Mastercard) intestata all’hotel. Aggiungila una volta su Stripe: poi il pulsante funziona da qui.'}
-                {v.state === 'not_enabled' && 'Stripe attiva i bonifici immediati dopo un periodo di incassi regolari, oppure oggi è stato raggiunto il limite giornaliero. Intanto i soldi arrivano con il bonifico normale, come sempre.'}
+                {v.state === 'not_enabled' && 'Servono due cose su Stripe: una carta di debito dell’hotel (Visa o Mastercard) tra i conti per i bonifici, e qualche settimana di incassi regolari, dopo cui Stripe attiva il servizio. Può anche essere stato raggiunto il limite di oggi. Intanto i soldi arrivano con il bonifico normale, come sempre.'}
                 {v.state === 'empty' && 'Appena un ospite paga con la carta, l’importo compare qui e puoi riceverlo in pochi minuti.'}
                 {v.state === 'error' && 'Non riesco a leggere il saldo ora. Nessun soldo è stato spostato: riprova tra qualche minuto.'}
               </p>

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { SESSION_COOKIE, verifySession } from './server/auth/session';
-import { GATE_COOKIE, gateOn, gatePage, gateToken } from './lib/site-gate';
+import { GATE_COOKIE, gateLang, gateOn, gatePage, gateToken } from './lib/site-gate';
 
 const LOCALES = ['en', 'pl', 'de', 'fr', 'es'];
 
@@ -30,7 +30,7 @@ export async function proxy(req: NextRequest) {
     const wrong = params.get('accesso') === 'errato';
     params.delete('accesso');
     const rest = params.toString();
-    return new NextResponse(gatePage(`${pathname}${rest ? `?${rest}` : ''}`, wrong), {
+    return new NextResponse(gatePage(`${pathname}${rest ? `?${rest}` : ''}`, wrong, gateLang(pathname, req.headers.get('accept-language'))), {
       status: 401,
       headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow' },
     });

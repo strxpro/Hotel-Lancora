@@ -125,7 +125,7 @@ export function autoInstantSummary(a: { enabled: boolean }): string {
 }
 export function setAutoInstant(a: { enabled: boolean }, actor: string): string {
   return mutate((db) => {
-    if (!db.settings.stripeConnect.accountId) return 'Prima collega il conto Stripe dell’hotel (pannello → Pagamenti).';
+    if (!db.settings.stripeConnect.accountId && !db.settings.stripeConnect.direct) return 'Prima collega il conto Stripe dell’hotel (pannello → Pagamenti).';
     db.settings.stripeConnect.autoInstant = a.enabled;
     audit(db, actor, 'instant_payout_auto', 'settings', null, a.enabled ? 'Bonifico immediato automatico acceso' : 'Bonifico immediato automatico spento');
     return a.enabled ? 'Fatto: ogni pagamento con carta arriverà subito sulla carta.' : 'Fatto: bonifico immediato automatico spento.';

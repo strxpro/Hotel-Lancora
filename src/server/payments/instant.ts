@@ -3,7 +3,7 @@ import type Stripe from 'stripe';
 import type { DB } from '@/lib/types';
 import { todayISO } from '@/lib/dates';
 import { estimatePayout } from '@/lib/payout';
-import { stripe, stripeMode } from './stripe';
+import { hotelOwnStripe, stripe, stripeMode } from './stripe';
 
 /**
  * "Ricevi subito": the hotel moves its card takings to its debit card (or a bank that accepts
@@ -82,10 +82,44 @@ function simulatedView(db: DB): InstantView {
   return { state: max >= INSTANT_MIN ? 'ready' : 'empty', simulated: true, test: false, max, fee: 0, to: 'Carta di debito •••• 0000', destination: null };
 }
 
-/** The connected account that receives the money, or null when there is none (or only the demo). */
-function account(db: DB): string | null {
+/**
+ * Whose balance: the hotel's connected account, or 'self' when the keys on the site are the hotel's
+ * own Stripe (Collegamenti → "Conto dell'hotel"); null when there is none (or only the demo).
+ */
+function account(db: DB): string | 'self' | null {
   const c = db.settings.stripeConnect;
+  if (hotelOwnStripe()) return c.direct && c.detailsSubmitted ? 'self' : null;
   return c.accountId && !c.simulated && c.detailsSubmitted ? c.accountId : null;
+}
+
+/** Stripe's request options for that balance: none for the hotel's own account. */
+const on = (acct: string | 'self') => (acct === 'self' ? undefined : { stripeAccount: acct });
+
+/**
+ * The hotel's own account, from its balance alone: Stripe already counts only the money that can
+ * leave now, after its fee and within today's limit; it goes to the account's default debit card
+ * (or bank) for euro.
+ */
+export function instantFromBalance(balance: Pick<Stripe.Balance, 'available' | 'pending' | 'instant_available'>, test: boolean): InstantView {
+  const base = { simulated: false, test, fee: 0, to: null, destination: null };
+  const inst = balance.instant_available?.find((x) => x.currency === 'eur');
+  const net = eur(inst?.amount ?? 0);
+  if (net < INSTANT_MIN) {
+    const waiting = [...balance.available, ...balance.pending].filter((x) => x.currency === 'eur').reduce((a, x) => a + x.amount, 0);
+    return { ...base, max: 0, state: waiting >= cents(INSTANT_MIN) ? 'not_enabled' : 'empty' };
+  }
+  return { ...base, max: Math.min(net, INSTANT_MAX), state: 'ready' };
+}
+
+/** The hotel's own cards / banks for payouts, when Stripe lets the account read them (else null). */
+async function ownExternals(s: Stripe): Promise<External[] | null> {
+  try {
+    const me = await s.accounts.retrieveCurrent();
+    const l = await s.accounts.listExternalAccounts(me.id, { limit: 20 });
+    return l.data as External[];
+  } catch {
+    return null;
+  }
 }
 
 export async function instantView(db: DB): Promise<InstantView | null> {
@@ -97,10 +131,12 @@ export async function instantView(db: DB): Promise<InstantView | null> {
   try {
     const s = stripe();
     const [balance, externals] = await withTimeout(
-      Promise.all([s.balance.retrieve({ expand: ['instant_available.net_available'] }, { stripeAccount: acct }), s.accounts.listExternalAccounts(acct, { limit: 20 })]),
+      Promise.all([s.balance.retrieve({ expand: ['instant_available.net_available'] }, on(acct)), acct === 'self' ? ownExternals(s) : s.accounts.listExternalAccounts(acct, { limit: 20 }).then((l) => l.data as External[])]),
       7000,
     );
-    return instantFromStripe(balance, externals.data as External[], mode === 'test');
+    // the hotel's own account whose cards cannot be read: Stripe's instant balance says it all
+    if (acct === 'self' && !externals?.length) return instantFromBalance(balance, mode === 'test');
+    return instantFromStripe(balance, externals ?? [], mode === 'test');
   } catch (e) {
     return { state: 'error', simulated: false, test: mode === 'test', max: 0, fee: 0, to: null, error: (e as Error).message.slice(0, 160) };
   }
@@ -147,7 +183,7 @@ export async function sendInstant(db: DB, amount: number): Promise<InstantResult
   try {
     const p = await stripe().payouts.create(
       { amount: cents(want), currency: 'eur', method: 'instant', ...(v.destination ? { destination: v.destination } : {}), description: 'Ricevi subito (pannello hotel)', metadata: { app: 'hotel-lancora' } },
-      { stripeAccount: acct, idempotencyKey: `instant:${acct}:${cents(want)}:${Math.floor(Date.now() / 60_000)}` },
+      { ...on(acct), idempotencyKey: `instant:${acct}:${cents(want)}:${Math.floor(Date.now() / 60_000)}` },
     );
     // the "Oggi" card reads the balance again
     (globalThis as { __lancoraPayout?: unknown }).__lancoraPayout = undefined;
