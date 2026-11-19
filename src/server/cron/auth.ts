@@ -3,9 +3,9 @@ import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
 /**
- * The scheduled jobs (/api/cron/*) answer only to the scheduler: Vercel Cron sends
- * "Authorization: Bearer <CRON_SECRET>" by itself; another service (e.g. cron-job.org) can send the
- * same header, or call the address with ?key=<CRON_SECRET>.
+ * The scheduled jobs (/api/cron/*) answer only to the scheduler: cron-job.org (free, works on any
+ * Vercel plan) calls the address with ?key=<CRON_SECRET> or sends "Authorization: Bearer <CRON_SECRET>"
+ * (what Vercel Cron would send by itself, if it is ever used: then the crons go in vercel.json).
  */
 export function cronDenied(req: Request): NextResponse | null {
   const secret = (process.env.CRON_SECRET ?? '').trim();
