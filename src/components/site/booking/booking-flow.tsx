@@ -316,7 +316,7 @@ export function BookingFlow({
         {step >= 2 && <MobileSummary room={room} query={query} total={hold?.total ?? quote?.quote.total ?? null} guests={guests}>{summary}</MobileSummary>}
 
         <AnimatePresence mode="wait">
-          <motion.div key={step} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.45, ease: EASE }}>
+          <motion.div key={step <= 1 ? 'choose' : step} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.45, ease: EASE }}>
             {step <= 1 && (
               <ChooseRoom
                 query={query}

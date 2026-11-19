@@ -62,7 +62,7 @@ export function PlanningBoard({ rooms, bookings, blocks, today, initialMonth, in
     <div>
       <StickyBar className="mb-3">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-1.5 rounded-full border border-line bg-white p-1 sm:self-start">
+        <div className={cn('flex items-center gap-1.5 rounded-full border border-line bg-white p-1 sm:self-start', view === 'booking' && 'invisible')}>
           <button type="button" onClick={() => setMonth(addMonths(month, -1))} aria-label="Mese precedente" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-navy hover:bg-sand-2 active:scale-90">
             <ChevronLeft className="h-4 w-4" />
           </button>

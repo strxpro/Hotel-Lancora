@@ -134,7 +134,7 @@ export function RoomsSection({
     <div className="space-y-5">
       {bounds[1] > bounds[0] && (
         <div>
-          <p className="label">{results ? t.rooms.f.price : `${t.rooms.f.price} · ${t.rooms.perNight}`}</p>
+          <p className="label">{t.rooms.f.price}</p>
           <PriceHistogram points={base.map((r) => ({ price: priceOf(r), weight: r.room.popularity }))} bounds={bounds} value={range} onChange={(v) => setFilters((f) => ({ ...f, price: v }))} />
         </div>
       )}

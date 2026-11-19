@@ -154,7 +154,7 @@ export function BookingView({ rooms, bookings, blocks, periods, today, onBooking
                   const n = nights.get(`${r.id}|${d}`)!;
                   return (
                     <Cell key={d} d={d} today={today} sel={inSel(r.id, d)} onDown={(e) => down(e, r.id, d)} onEnter={() => enter(r.id, d)}>
-                      <span className={cn('flex h-7 w-full items-center justify-center rounded-lg text-[0.62rem] font-semibold uppercase tracking-[0.06em]', n.kind === 'open' ? 'bg-sage/15 text-sage' : n.kind === 'sold' ? 'bg-navy text-ivory' : n.kind === 'portal' ? 'bg-gold/25 text-[#7a5a1f]' : 'bg-terracotta/15 text-terracotta')}>
+                      <span className={cn('flex h-7 w-full items-center justify-center rounded-lg text-[0.62rem] font-semibold uppercase tracking-[0.06em]', n.kind === 'open' ? 'bg-[#e4f2e7] text-[#2e7a46]' : n.kind === 'sold' ? 'bg-navy text-ivory' : n.kind === 'portal' ? 'bg-gold/25 text-[#7a5a1f]' : 'bg-terracotta/15 text-terracotta')}>
                         {n.kind === 'open' ? 'Aperta' : n.kind === 'sold' ? 'Venduta' : n.kind === 'portal' ? 'Portale' : 'Chiusa'}
                       </span>
                     </Cell>
@@ -195,7 +195,7 @@ export function BookingView({ rooms, bookings, blocks, periods, today, onBooking
         </div>
       </div>
       <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.7rem] text-mist">
-        <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded bg-sage/40" /> Aperta</span>
+        <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded bg-[#bfe3c8]" /> Aperta</span>
         <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded bg-navy" /> Venduta</span>
         <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded bg-terracotta/40" /> Chiusa da te</span>
         <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded bg-gold/50" /> Chiusa dal calendario di un portale</span>
@@ -214,7 +214,7 @@ export function BookingView({ rooms, bookings, blocks, periods, today, onBooking
                   {nightsN > 1 ? ` → ${fmtDate(range[1]!, 'it', { weekday: 'short', day: 'numeric', month: 'short' })}` : ''} · {notti(nightsN)}
                 </p>
               </div>
-              <button type="button" onClick={done} aria-label="Chiudi" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sand-2 text-navy">
+              <button type="button" onClick={done} aria-label="Chiudi il pannello" title="Chiudi il pannello" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sand-2 text-navy">
                 <X className="h-4 w-4" />
               </button>
             </div>
