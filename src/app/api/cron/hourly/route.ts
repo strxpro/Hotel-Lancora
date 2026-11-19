@@ -23,7 +23,15 @@ export async function GET(req: Request) {
   await settleAppUrl();
   return runJobs({
     reviews: () => sendReviewRequests(),
-    stripe: async () => ((await ensureStripeWebhook()) ? 'collegato' : 'invariato'),
+    stripe: async () => {
+      const linked = (await ensureStripeWebhook()) ? 'collegato' : 'invariato';
+      // the hotel's own account activated on Stripe meanwhile: card payments switch on by themselves
+      const { hotelOwnStripe } = await import('@/server/payments/stripe');
+      if (!hotelOwnStripe()) return linked;
+      const { syncConnectStatus } = await import('@/server/payments/connect-sync');
+      await syncConnectStatus(true);
+      return `${linked} · conto ${readDb().settings.stripeConnect.chargesEnabled ? 'attivo' : 'in verifica'}`;
+    },
     telegram: async () => {
       const base = stablePublicUrl();
       const secret = (process.env.TELEGRAM_WEBHOOK_SECRET ?? '').trim();

@@ -22,7 +22,9 @@ export async function ensureStripeWebhook(force = false): Promise<boolean> {
   const app = await settleAppUrl();
   if (!app.startsWith('https://')) return false;
   const url = `${app}/api/stripe/webhook`;
-  if (!force && st.webhookUrl === url && st.webhookId && st.webhookSecret && st.connectWebhookId && st.connectWebhookSecret) return true;
+  // the hotel's own Stripe (not a platform) has no connected accounts: only the payments endpoint
+  const direct = st.owner === 'hotel';
+  if (!force && st.webhookUrl === url && st.webhookId && st.webhookSecret && (direct || (st.connectWebhookId && st.connectWebhookSecret))) return true;
 
   const StripeSdk = (await import('stripe')).default;
   const client = new StripeSdk(st.secretKey);
@@ -34,9 +36,15 @@ export async function ensureStripeWebhook(force = false): Promise<boolean> {
   }
   const base = { url, description: DESC, metadata: { app: 'hotel-lancora' } };
   const wh = await client.webhookEndpoints.create({ ...base, enabled_events: CHECKOUT_EVENTS });
-  const cw = await client.webhookEndpoints.create({ ...base, connect: true, enabled_events: ['account.updated'] });
+  // an account that is not a Connect platform refuses this one: the payments endpoint is kept anyway
+  const cw = direct
+    ? null
+    : await client.webhookEndpoints.create({ ...base, connect: true, enabled_events: ['account.updated'] }).catch((e) => {
+        console.error('[stripe] endpoint Connect non creato:', (e as Error).message);
+        return null;
+      });
   const now = readIntegrations().stripe;
   if (!now) return false;
-  writeIntegrations({ stripe: { ...now, webhookId: wh.id, webhookSecret: wh.secret, connectWebhookId: cw.id, connectWebhookSecret: cw.secret, webhookUrl: url } });
+  writeIntegrations({ stripe: { ...now, webhookId: wh.id, webhookSecret: wh.secret, connectWebhookId: cw?.id, connectWebhookSecret: cw?.secret ?? undefined, webhookUrl: url } });
   return true;
 }
