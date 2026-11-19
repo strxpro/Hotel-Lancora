@@ -14,6 +14,7 @@ export async function generateLinkCode() {
     if (!telegramConfigured()) throw new UserError('Token Telegram non configurato.');
     const me = await getMe();
     // a webhook only on a lasting public address; on this computer the site listens to the bot by itself
+    await (await import('@/lib/vercel-url')).settleAppUrl();
     const base = stablePublicUrl();
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET ?? '';
     if (base && secret.length >= 16) await setWebhook(`${base}/api/telegram/webhook`, secret);
@@ -95,6 +96,7 @@ export async function linkedChatsAction(): Promise<{ chatId: string; name: strin
 export async function setWebhookAction() {
   return act('automations.manage', async (u) => {
     if (!telegramConfigured()) throw new UserError('Token Telegram non configurato.');
+    await (await import('@/lib/vercel-url')).settleAppUrl();
     const base = stablePublicUrl();
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET ?? '';
     if (!base) throw new UserError('Non serve: su questo computer il sito ascolta Telegram da solo. Il webhook si usa solo quando il sito ha un indirizzo pubblico stabile (APP_URL).');

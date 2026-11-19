@@ -1,6 +1,7 @@
 import 'server-only';
 import type Stripe from 'stripe';
 import { readIntegrations, writeIntegrations } from '../integrations';
+import { settleAppUrl } from '@/lib/vercel-url';
 
 const DESC = 'Hotel L’Ancora – conferma prenotazioni';
 const CHECKOUT_EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.expired'];
@@ -17,7 +18,8 @@ export async function ensureStripeWebhook(force = false): Promise<boolean> {
   if (process.env.STRIPE_WEBHOOK_SECRET || (process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY !== 'off')) return false;
   const st = readIntegrations().stripe;
   if (!st?.secretKey || !/^(sk|rk)_(test|live)_/.test(st.secretKey)) return false;
-  const app = (process.env.APP_URL || '').replace(/\/$/, '');
+  // Stripe does not follow redirects: the address that answers (e.g. www.hotellancora.it)
+  const app = await settleAppUrl();
   if (!app.startsWith('https://')) return false;
   const url = `${app}/api/stripe/webhook`;
   if (!force && st.webhookUrl === url && st.webhookId && st.webhookSecret && st.connectWebhookId && st.connectWebhookSecret) return true;

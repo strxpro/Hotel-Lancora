@@ -6,6 +6,7 @@ import { stablePublicUrl } from '@/server/telegram/poller';
 import { setWebhook, telegramConfigured, tg } from '@/server/telegram/api';
 import { syncTables } from '@/server/db/tables-sync';
 import { cloudConfigured } from '@/server/db/cloud';
+import { settleAppUrl } from '@/lib/vercel-url';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -18,6 +19,8 @@ export const maxDuration = 120;
 export async function GET(req: Request) {
   const denied = cronDenied(req);
   if (denied) return denied;
+  // the address that answers (a new domain may redirect to www): Stripe and Telegram do not follow redirects
+  await settleAppUrl();
   return runJobs({
     reviews: () => sendReviewRequests(),
     stripe: async () => ((await ensureStripeWebhook()) ? 'collegato' : 'invariato'),

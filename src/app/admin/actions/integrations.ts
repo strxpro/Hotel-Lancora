@@ -250,6 +250,7 @@ export async function autoSetupAction() {
     else {
       try {
         const me = await tg<{ username: string }>('getMe');
+        await (await import('@/lib/vercel-url')).settleAppUrl();
         const base = stablePublicUrl();
         const secret = process.env.TELEGRAM_WEBHOOK_SECRET ?? '';
         let how = '';
