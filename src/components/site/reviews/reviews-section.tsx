@@ -146,7 +146,7 @@ export function ReviewsSection({ reviews, rooms }: { reviews: ReviewView[]; room
               label={rt.room}
               value={room}
               onChange={(v) => setRoom(v)}
-              options={[{ value: 'all', label: rt.allRooms }, ...reviewedRooms.map((r) => ({ value: r.id, label: `${rt.room} ${r.number} · ${r.name}` }))]}
+              options={[{ value: 'all', label: rt.allRooms }, ...reviewedRooms.map((r) => ({ value: r.id, label: r.number ? `${rt.room} ${r.number} · ${r.name}` : r.name }))]}
             />
           )}
         </div>
@@ -227,7 +227,7 @@ function ReviewCard({ r, onOpen }: { r: ReviewView; onOpen: () => void }) {
             {r.name}
             {r.verified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-sage" aria-label={rt.verified} />}
           </span>
-          {r.room && <span className="block truncate text-[0.7rem] text-mist">{rt.room} {r.room.number} · {r.room.name}</span>}
+          {r.room && <span className="block truncate text-[0.7rem] text-mist">{r.room.number ? `${rt.room} ${r.room.number} · ` : ''}{r.room.name}</span>}
         </span>
         <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-navy">
           {r.replies.length > 0 && (

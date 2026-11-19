@@ -66,8 +66,20 @@ export interface RoomInput {
 
 export function saveRoom(input: RoomInput, actor: string): Room {
   return mutate((db) => {
-    const number = input.number.trim();
-    if (!/^[A-Za-z0-9-]{1,8}$/.test(number)) throw new RoomError('Numero camera non valido (max 8 caratteri, lettere e numeri).');
+    // rooms without numbers: the site gives one for inside the panel (1, 2, 3…) and never shows it to guests
+    const typed = input.number.trim();
+    const before = input.id ? db.rooms.find((r) => r.id === input.id) : null;
+    let numberAuto = !typed;
+    let number = typed;
+    if (!typed) {
+      if (before?.numberAuto) number = before.number;
+      else {
+        let n = 1;
+        while (db.rooms.some((r) => r.number === String(n) && r.id !== input.id)) n += 1;
+        number = String(n);
+      }
+    } else if (before?.numberAuto && typed === before.number) numberAuto = true;
+    if (!/^[A-Za-z0-9-]{1,8}$/.test(number)) throw new RoomError('Numero camera non valido (max 8 caratteri, lettere e numeri), oppure lascialo vuoto.');
     if (db.rooms.some((r) => r.number === number && r.id !== input.id)) throw new RoomError(`Esiste già una camera con il numero ${number}.`);
     if (input.floor === 'inferiore' && !db.settings.floors.enableLower) throw new RoomError('Il piano inferiore è disattivato nelle impostazioni.');
     if (input.basePrice < 0 || input.basePrice > 5000) throw new RoomError('Prezzo non valido.');
@@ -86,6 +98,7 @@ export function saveRoom(input: RoomInput, actor: string): Room {
       const priceChanged = existing.basePrice !== input.basePrice;
       Object.assign(existing, {
         number,
+        numberAuto,
         name,
         type: input.type,
         maxGuests: input.maxGuests,
@@ -120,6 +133,7 @@ export function saveRoom(input: RoomInput, actor: string): Room {
     const room: Room = {
       id: newId('room-'),
       number,
+      numberAuto,
       slug,
       name,
       type: input.type,

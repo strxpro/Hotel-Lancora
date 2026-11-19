@@ -545,7 +545,7 @@ function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput
             {room ? room.name : '—'}
           </motion.p>
         </AnimatePresence>
-        {room && <p className="mt-1 text-xs text-mist">N° {room.number} · {t.roomTypes[room.type]} · {t.floor[room.floor]}</p>}
+        {room && <p className="mt-1 text-xs text-mist">{room.number ? `N° ${room.number} · ` : ''}{t.roomTypes[room.type]} · {t.floor[room.floor]}</p>}
         <dl className="mt-6 grid grid-cols-2 gap-4 border-y border-line py-5 text-sm">
           <div>
             <dt className="label mb-1">{t.search.arrival}</dt>

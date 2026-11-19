@@ -35,7 +35,7 @@ export default async function HomePage({ params, searchParams }: Props) {
   const results = q.checkIn && q.checkOut ? availability(db, { checkIn: q.checkIn, checkOut: q.checkOut, adults: q.adults, children: q.children }, locale) : null;
   const { hotel } = db.settings;
   const reviews = publicReviews(db, locale).slice(0, 40);
-  const reviewRooms = db.rooms.filter((r) => r.status === 'available' && !r.hidden).sort((a, b) => a.sortOrder - b.sortOrder).map((r) => ({ id: r.id, number: r.number, name: localizeRoom(r, locale).t.title || r.name }));
+  const reviewRooms = db.rooms.filter((r) => r.status === 'available' && !r.hidden).sort((a, b) => a.sortOrder - b.sortOrder).map((r) => ({ id: r.id, number: r.numberAuto ? '' : r.number, name: localizeRoom(r, locale).t.title || r.name }));
 
   const jsonLd = {
     '@context': 'https://schema.org',

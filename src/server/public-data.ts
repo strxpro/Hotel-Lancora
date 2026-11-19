@@ -23,7 +23,7 @@ export function toCard(r: LocalizedRoom, popularity = 0, payments?: DB['settings
   return {
     id: r.id,
     slug: r.slug,
-    number: r.number,
+    number: r.numberAuto ? '' : r.number,
     name: r.t.title || r.name,
     type: r.type,
     maxGuests: r.maxGuests,

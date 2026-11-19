@@ -127,7 +127,12 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
         <div className="mt-20 grid gap-6 md:grid-cols-12 md:items-end">
           <div className="md:col-span-8">
             <p className="eyebrow flex items-center gap-3 text-gold-2">
-              N° {room.number} <span className="h-px w-6 bg-gold/60" /> {t.floor[room.floor]}
+              {room.number && (
+                <>
+                  N° {room.number} <span className="h-px w-6 bg-gold/60" />{' '}
+                </>
+              )}
+              {t.floor[room.floor]}
             </p>
             <SplitHeading as="h1" immediate className="display mt-5 text-headline text-navy">
               {room.title}
@@ -302,7 +307,7 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
                     <ImageReveal className={cn('bg-sand', i === 1 ? 'aspect-[4/5]' : 'aspect-[4/3]')} delay={i * 0.1}>
                       {s.photo && <Image src={s.photo.src} alt={s.photo.alt} fill sizes="(min-width:768px) 30vw, 100vw" className="object-cover transition-transform duration-[1.4s] group-hover:scale-[1.04]" />}
                     </ImageReveal>
-                    <p className="eyebrow mt-5 text-gold-2">N° {s.number}</p>
+                    {s.number && <p className="eyebrow mt-5 text-gold-2">N° {s.number}</p>}
                     <p className="serif mt-2 text-[1.8rem] leading-tight text-navy">{s.name}</p>
                     <p className="mt-1 text-sm text-mist">
                       {plural(locale, s.maxGuests, t.rooms.upTo)} · {s.beds}

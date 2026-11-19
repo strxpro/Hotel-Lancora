@@ -99,12 +99,12 @@ function userRow(u: User): Row {
 }
 
 function roomRows(r: Room): { room: Row; photos: Row[]; translations: Row[] } {
-  const { id, number, slug, name, type, maxGuests, beds, bedsCount, bedConfig, size, floor, basePrice, cashPrice, payment, status, hidden, photos, amenities, text, translations, sortOrder, createdAt, updatedAt, demo, ...rest } = r;
+  const { id, number, numberAuto, slug, name, type, maxGuests, beds, bedsCount, bedConfig, size, floor, basePrice, cashPrice, payment, status, hidden, photos, amenities, text, translations, sortOrder, createdAt, updatedAt, demo, ...rest } = r;
   all(rest);
   const { title, short, description, ...textRest } = text;
   all(textRest);
   return {
-    room: { id, number, slug, name, type, max_guests: maxGuests, beds, beds_count: bedsCount, bed_config: bedConfig ?? null, size_m2: size ?? null, floor, base_price: basePrice, cash_price: cashPrice ?? null, payment: payment ?? null, status, hidden, amenities: amenities ?? [], title, short_text: short, description, sort_order: sortOrder, created_at: createdAt, updated_at: updatedAt, is_demo: demo },
+    room: { id, number, number_auto: numberAuto ?? null, slug, name, type, max_guests: maxGuests, beds, beds_count: bedsCount, bed_config: bedConfig ?? null, size_m2: size ?? null, floor, base_price: basePrice, cash_price: cashPrice ?? null, payment: payment ?? null, status, hidden, amenities: amenities ?? [], title, short_text: short, description, sort_order: sortOrder, created_at: createdAt, updated_at: updatedAt, is_demo: demo },
     photos: (photos ?? []).map((p, position) => {
       const { id: photoId, src, alt, width, height, demo: photoDemo, credit, ...photoRest } = p;
       all(photoRest);

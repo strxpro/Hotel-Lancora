@@ -13,7 +13,7 @@ export const TABLE_COLUMNS: Record<TableName, readonly string[]> = {
     'reviews', 'custom_amenities', 'faq', 'demo_mode', 'panel'],
   staff_users: ['id', 'email', 'name', 'role', 'password_hash', 'created_at', 'two_factor'],
   rooms: ['id', 'number', 'slug', 'name', 'type', 'max_guests', 'beds', 'beds_count', 'bed_config', 'size_m2',
-    'floor', 'base_price', 'cash_price', 'payment', 'status', 'hidden', 'amenities', 'title', 'short_text',
+    'floor', 'base_price', 'cash_price', 'payment', 'number_auto', 'status', 'hidden', 'amenities', 'title', 'short_text',
     'description', 'sort_order', 'created_at', 'updated_at', 'is_demo'],
   room_photos: ['room_id', 'id', 'position', 'src', 'alt', 'width', 'height', 'is_demo', 'credit'],
   room_translations: ['room_id', 'locale', 'title', 'short_text', 'description', 'status', 'manual',

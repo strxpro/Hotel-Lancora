@@ -47,6 +47,8 @@ export interface Room {
   bedConfig?: { kind: BedKind; count: number }[];
   size: number | null;
   floor: FloorKey;
+  /** the hotel has no room numbers: the site gave this one (only inside the panel, never shown to guests) */
+  numberAuto?: boolean;
   basePrice: number;
   /** price per night when the guest pays cash at the hotel (null = global cash discount) */
   cashPrice?: number | null;

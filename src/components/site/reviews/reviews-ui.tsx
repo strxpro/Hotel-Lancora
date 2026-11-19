@@ -105,7 +105,7 @@ export function ReviewItem({ r, showRoom = true, compact = false, flat = false }
           <p className="mt-1 text-[0.75rem] text-mist">{fmtDate(r.createdAt.slice(0, 10), locale, { day: 'numeric', month: 'long', year: 'numeric' })}</p>
           {showRoom && r.room && (
             <p className="mt-1.5 w-fit rounded-full bg-ivory px-2 py-0.5 text-[0.7rem] font-medium text-navy">
-              {t.room} {r.room.number} · {r.room.name}
+              {r.room.number ? `${t.room} ${r.room.number} · ` : ''}{r.room.name}
             </p>
           )}
         </div>

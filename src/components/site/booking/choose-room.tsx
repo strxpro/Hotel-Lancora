@@ -177,7 +177,7 @@ export function ChooseRoom({
                   </div>
                   <div className="flex flex-col p-5 md:p-6">
                     <p className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-gold-2">
-                      N° {r.room.number} · {t.roomTypes[r.room.type]} · {t.floor[r.room.floor]}
+                      {r.room.number ? `N° ${r.room.number} · ` : ''}{t.roomTypes[r.room.type]} · {t.floor[r.room.floor]}
                     </p>
                     <h3 className="serif mt-1 text-[1.9rem] leading-tight text-navy">{r.room.name}</h3>
                     {r.room.rating && (

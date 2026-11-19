@@ -101,6 +101,7 @@ create table if not exists public.rooms (
   base_price numeric(10,2) not null check (base_price >= 0),
   cash_price numeric(10,2) check (cash_price is null or cash_price >= 0),  -- null = global cash discount
   payment text check (payment is null or payment in ('both', 'card', 'cash')),  -- how guests pay this room; null = not set (both)
+  number_auto boolean,  -- true = the hotel has no room numbers: the site gave this one (never shown to guests)
   status text not null check (status in ('available', 'unavailable', 'draft')),
   hidden boolean not null default false,
   amenities text[] not null default '{}',
@@ -117,6 +118,7 @@ create table if not exists public.rooms (
 
 -- databases created before the column existed get it here (nothing else changes)
 alter table public.rooms add column if not exists payment text check (payment is null or payment in ('both', 'card', 'cash'));
+alter table public.rooms add column if not exists number_auto boolean;
 
 create table if not exists public.room_photos (
   room_id text not null references public.rooms (id) on delete cascade deferrable initially immediate,

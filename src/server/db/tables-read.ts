@@ -51,7 +51,7 @@ function roomOf(r: Row, photos: Row[], translations: Row[]): Room {
   return {
     id: str(r.id), number: str(r.number), slug: str(r.slug), name: str(r.name), type: r.type as Room['type'], maxGuests: num(r.max_guests), beds: str(r.beds), bedsCount: num(r.beds_count),
     ...opt<'bedConfig', NonNullable<Room['bedConfig']>>('bedConfig', r.bed_config),
-    size: numN(r.size_m2), floor: r.floor as Room['floor'], basePrice: num(r.base_price), cashPrice: numN(r.cash_price), ...opt<'payment', NonNullable<Room['payment']>>('payment', r.payment), status: r.status as Room['status'], hidden: bool(r.hidden),
+    size: numN(r.size_m2), floor: r.floor as Room['floor'], basePrice: num(r.base_price), cashPrice: numN(r.cash_price), ...opt<'payment', NonNullable<Room['payment']>>('payment', r.payment), ...(r.number_auto ? { numberAuto: true } : {}), status: r.status as Room['status'], hidden: bool(r.hidden),
     photos: byPosition(photos).map(photoOf),
     amenities: (r.amenities as string[] | null) ?? [],
     text: { title: str(r.title), short: str(r.short_text), description: str(r.description) },

@@ -70,7 +70,7 @@ export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 
           </div>
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(10,28,43,0.28)_0%,transparent_30%,transparent_62%,rgba(10,28,43,0.42)_100%)] opacity-80 transition-opacity duration-700 group-hover/card:opacity-100" />
           <span className="absolute left-4 top-4 flex flex-wrap gap-1.5">
-            <span className="rounded-full bg-ivory/92 px-3 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-navy">N° {room.number}</span>
+            {room.number && <span className="rounded-full bg-ivory/92 px-3 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-navy">N° {room.number}</span>}
             {top && <span className="rounded-full bg-gold px-3 py-1 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-navy-3">★ {t.booking.pick.popular}</span>}
           </span>
           {result && (

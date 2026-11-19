@@ -16,7 +16,7 @@ import { PhotoManager } from './photo-manager';
 import { addCustomAmenityAction, deleteRoomAction, improveTextAction, removeBlockAction, removeCustomAmenityAction, removeRatePeriodAction, saveRoomAction, suggestRoomAction } from '@/app/admin/actions/rooms';
 
 const STEPS = [
-  { t: 'La camera', d: 'Numero, tipo, ospiti e prezzo' },
+  { t: 'La camera', d: 'Nome o numero, tipo, ospiti e prezzo' },
   { t: 'Piano e servizi', d: 'Dove si trova e cosa offre' },
   { t: 'Foto', d: 'La prima è la copertina' },
   { t: 'Descrizione', d: 'Il testo che leggono gli ospiti' },
@@ -130,7 +130,7 @@ export function RoomWizard({ room, enableLower, canEditPrice, canDelete, transla
   const [helping, setHelping] = useState(false);
   const [extras, setExtras] = useState(customAmenities);
   const [newAmenity, setNewAmenity] = useState<string | null>(null);
-  const dup = existing.find((r) => r.number === f.number.trim() && r.id !== id) ?? null;
+  const dup = f.number.trim() ? (existing.find((r) => r.number === f.number.trim() && r.id !== id) ?? null) : null;
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => {
     setF((x) => ({ ...x, [k]: v }));
@@ -144,9 +144,8 @@ export function RoomWizard({ room, enableLower, canEditPrice, canDelete, transla
 
   const errors = useMemo(() => {
     const e: Partial<Record<keyof Form, string>> = {};
-    if (!f.number.trim()) e.number = 'Inserisci il numero della camera (es. 113).';
-    else if (f.number.trim().length > 8) e.number = 'Massimo 8 caratteri.';
-    else if (existing.some((r) => r.number === f.number.trim() && r.id !== id)) e.number = 'dup';
+    if (f.number.trim().length > 8) e.number = 'Massimo 8 caratteri.';
+    else if (f.number.trim() && existing.some((r) => r.number === f.number.trim() && r.id !== id)) e.number = 'dup';
     if (f.cashPrice !== null && !(f.cashPrice >= 1 && f.cashPrice <= f.basePrice)) e.cashPrice = 'Il prezzo in contanti deve essere uguale o più basso di quello con carta.';
     if (!(f.maxGuests >= 1 && f.maxGuests <= 10)) e.maxGuests = 'Da 1 a 10 ospiti.';
     if (!(f.bedsCount >= 1 && f.bedsCount <= 8)) e.bedsCount = 'Da 1 a 8 letti.';
@@ -171,7 +170,7 @@ export function RoomWizard({ room, enableLower, canEditPrice, canDelete, transla
   const payload = (statusOverride?: RoomStatus) => ({
     id,
     number: f.number.trim(),
-    name: f.name.trim() || `Camera ${f.number.trim()}`,
+    name: f.name.trim() || (f.number.trim() ? `Camera ${f.number.trim()}` : ''),
     type: f.type,
     maxGuests: Number(f.maxGuests),
     beds: f.beds.trim() || '—',
@@ -186,11 +185,11 @@ export function RoomWizard({ room, enableLower, canEditPrice, canDelete, transla
     hidden: f.hidden,
     amenities: f.amenities,
     photos: f.photos,
-    text: { title: f.text.title || f.name || `Camera ${f.number}`, short: f.text.short, description: f.text.description },
+    text: { title: f.text.title || f.name || (f.number.trim() ? `Camera ${f.number}` : ''), short: f.text.short, description: f.text.description },
     blocks: newBlocks,
     prices: [
       ...newPrices,
-      ...Object.entries(monthEdit).map(([m, v]) => ({ from: m, to: addMonths(m, 1), price: v, label: v === null ? '' : `Camera ${f.number.trim()} · ${fmtDate(m, 'it', { month: 'long', year: 'numeric' })}` })),
+      ...Object.entries(monthEdit).map(([m, v]) => ({ from: m, to: addMonths(m, 1), price: v, label: v === null ? '' : `${f.name.trim() || `Camera ${f.number.trim()}`} · ${fmtDate(m, 'it', { month: 'long', year: 'numeric' })}` })),
     ],
   });
 
@@ -344,7 +343,7 @@ export function RoomWizard({ room, enableLower, canEditPrice, canDelete, transla
             {step === 0 && (
               <div className="mt-7 space-y-7">
                 <div className="grid gap-5 sm:grid-cols-2">
-                  <Input label="Numero camera" hint={dup ? undefined : 'Come sul foglio, es. 113'} error={err('number') === 'dup' ? undefined : err('number')} flash={fl('number')}>
+                  <Input label="Numero camera (facoltativo)" hint={dup ? undefined : 'Es. 113. Lascia vuoto se le camere non hanno numero'} error={err('number') === 'dup' ? undefined : err('number')} flash={fl('number')}>
                     <input className={cn('field', dup && 'border-terracotta')} value={f.number} onChange={(e) => set('number', e.target.value)} inputMode="numeric" maxLength={8} aria-invalid={Boolean(err('number')) || Boolean(dup)} aria-describedby={dup ? 'dup-number' : undefined} />
                     <AnimatePresence initial={false}>
                       {dup && (

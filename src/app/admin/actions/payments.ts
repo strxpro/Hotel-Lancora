@@ -19,6 +19,10 @@ async function stripeCall<T>(fn: () => Promise<T>): Promise<T> {
     if (/signed up for Connect|connect.*not enabled|enable Connect|accounts_v2_access_blocked|Accounts v2 is not enabled|platform profile/i.test(msg)) {
       throw new UserError(`Prima serve un passo, una volta sola, su Stripe, nell’account del sito: apri dashboard.stripe.com/${stripeMode() === 'test' ? 'test/' : ''}connect e premi “Inizia” (scegli “Piattaforma”, conti gestiti da Stripe). Poi torna qui e premi di nuovo “Collega Stripe”.`);
     }
+    // the site's own Stripe account is not activated yet for real payments: nothing the hotel can do
+    if (/activat|cannot currently (make|create)|live (charges|mode).*not|account.*(not|isn.t).*(enabled|active)|complete.*(onboarding|activation)|requirements/i.test(msg)) {
+      throw new UserError('Il conto Stripe del sito non è ancora attivo per i pagamenti veri. Chi gestisce il sito deve completare “Attiva i pagamenti” su dashboard.stripe.com (dati, documento, IBAN). Poi premi di nuovo “Collega Stripe”.');
+    }
     throw new UserError(`Stripe: ${msg}`);
   }
 }
