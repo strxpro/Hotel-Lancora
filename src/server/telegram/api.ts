@@ -1,0 +1,90 @@
+import 'server-only';
+import { splitTelegramText } from './media';
+
+/** Minimal Telegram Bot API client. The token never leaves the server. */
+export function telegramConfigured(): boolean {
+  return Boolean(process.env.TELEGRAM_BOT_TOKEN && /^\d+:[\w-]{30,}$/.test(process.env.TELEGRAM_BOT_TOKEN));
+}
+
+/** Any Bot API method (the poller needs long timeouts for getUpdates). */
+export async function tg<T = unknown>(method: string, body: Record<string, unknown> = {}, timeoutMs = 15000, signal?: AbortSignal): Promise<T> {
+  return call<T>(method, body, timeoutMs, signal);
+}
+
+async function call<T = unknown>(method: string, body: Record<string, unknown>, timeoutMs = 15000, signal?: AbortSignal): Promise<T> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error('Telegram non configurato (TELEGRAM_BOT_TOKEN)');
+  const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: signal ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal]) : AbortSignal.timeout(timeoutMs),
+  });
+  const json = (await res.json()) as { ok: boolean; result?: T; description?: string; error_code?: number };
+  if (!json.ok) throw Object.assign(new Error(json.description || `Telegram ${method} failed`), { code: json.error_code });
+  return json.result as T;
+}
+
+export type InlineButton = { text: string; callback_data: string };
+
+/** Plain assistant output, split without breaking emoji or HTML entities. */
+export async function sendText(chatId: string, text: string, buttons?: InlineButton[][]): Promise<void> {
+  const chunks = splitTelegramText(text);
+  for (const [index, chunk] of chunks.entries()) {
+    await sendMessage(chatId, escapeHtml(chunk), index === chunks.length - 1 ? buttons : undefined);
+  }
+}
+
+export function sendMessage(chatId: string, text: string, buttons?: InlineButton[][]): Promise<unknown> {
+  return call('sendMessage', {
+    chat_id: chatId,
+    text,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+    ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
+  });
+}
+
+export function editMessage(chatId: string, messageId: number, text: string): Promise<unknown> {
+  return call('editMessageText', { chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML' });
+}
+
+export function answerCallback(id: string, text?: string): Promise<unknown> {
+  return call('answerCallbackQuery', { callback_query_id: id, text });
+}
+
+export async function setWebhook(url: string, secret: string): Promise<unknown> {
+  return call('setWebhook', { url, secret_token: secret, allowed_updates: ['message', 'callback_query'], drop_pending_updates: false });
+}
+
+export async function getMe(): Promise<{ username: string; first_name: string }> {
+  return call('getMe', {});
+}
+
+export async function downloadFile(fileId: string): Promise<{ data: ArrayBuffer; path: string }> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const info = await call<{ file_path: string }>('getFile', { file_id: fileId });
+  const res = await fetch(`https://api.telegram.org/file/bot${token}/${info.file_path}`, { signal: AbortSignal.timeout(20000) });
+  if (!res.ok) throw new Error('Download file Telegram non riuscito');
+  return { data: await res.arrayBuffer(), path: info.file_path };
+}
+
+export function escapeHtml(s: string): string {
+  return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
+}
+
+/** Sends a picture from our server (works locally too: the file is uploaded, not linked). */
+export async function sendPhoto(chatId: string, data: Buffer, caption?: string): Promise<unknown> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error('Telegram non configurato (TELEGRAM_BOT_TOKEN)');
+  const sharp = (await import('sharp')).default;
+  const jpg = await sharp(data).jpeg({ quality: 85 }).toBuffer();
+  const fd = new FormData();
+  fd.append('chat_id', chatId);
+  fd.append('photo', new Blob([new Uint8Array(jpg)], { type: 'image/jpeg' }), 'foto.jpg');
+  if (caption) fd.append('caption', caption.slice(0, 1000));
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: fd, signal: AbortSignal.timeout(30000) });
+  const json = (await res.json()) as { ok: boolean; description?: string };
+  if (!json.ok) throw new Error(json.description || 'sendPhoto failed');
+  return json;
+}

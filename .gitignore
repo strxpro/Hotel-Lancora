@@ -1,0 +1,37 @@
+node_modules
+.next
+out
+data/*.json
+data/uploads
+data/.secret*
+.env
+.env.local
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+.qa
+data/db.json.*
+.cache
+.demo-runtime
+
+# never in the repository: the hotel's data and backups, keys, this computer's tools and copies
+data/
+.deploy/
+.claude/
+.mcp.json
+.npmrc
+.env.*
+!.env.example
+output/
+kopia-stara-strona/
+node-compile-cache/
+tsx-*/
+.next-build/
+.next-prev/
+*.log
+# internal notes for running this installation (addresses, accounts): kept on this computer only
+DEMO-PUBLICZNE.md
+INSTRUKCJA-SYSTEMU.md
+JAK-PODLACZYC.md
+PRZEJSCIE-Z-DEMO.md
+STATUS-INTEGRACJI.md
