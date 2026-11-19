@@ -57,17 +57,39 @@ const QUICK: { key: string; label: string; ask: string }[] = [
   { key: 'prezzi', label: '🏷 Prezzi', ask: 'prezzi' },
   { key: 'aiuto', label: '❓ Aiuto', ask: 'aiuto' },
 ];
+/** The commands of Telegram's "Menu" button (left of the typing field): the same quick questions. */
+export const BOT_COMMANDS = [...QUICK.map((q) => ({ command: q.key, description: q.label })), { command: 'menu', description: '🔘 Mostra i pulsanti rapidi' }];
+// not persistent: Telegram shows a small keyboard icon in the typing field that folds the buttons away and back
 const KEYBOARD: ReplyKeyboard = {
   keyboard: [0, 2, 4, 6].map((i) => QUICK.slice(i, i + 2).map((q) => ({ text: q.label }))),
   resize_keyboard: true,
-  is_persistent: true,
+  is_persistent: false,
   input_field_placeholder: 'Scrivi o manda un vocale…',
 };
 const MENU: InlineButton[][] = [0, 2, 4, 6].map((i) => QUICK.slice(i, i + 2).map((q) => ({ text: q.label, callback_data: `q:${q.key}` })));
 const quickAsk = (text: string) => {
+  // a command of the Menu button: /oggi, /prezzi…
+  const cmd = text.match(/^\/([a-z]+)$/i)?.[1]?.toLowerCase();
+  if (cmd) return QUICK.find((q) => q.key === cmd)?.ask ?? null;
   const plain = text.replace(/[^\p{L}\p{N} ]/gu, '').trim().toLowerCase();
   return QUICK.find((q) => q.label.replace(/[^\p{L}\p{N} ]/gu, '').trim().toLowerCase() === plain)?.ask ?? null;
 };
+
+/**
+ * What arrives from groups, without any words of the messages (kind of chat, called or not, known
+ * person or not, what the bot did): the last 30, next to the hotel's data, to see why a group is
+ * silent. Only on the hosting with the data in Supabase.
+ */
+async function traceGroup(e: { chat: string; called: boolean; known: boolean; voice: boolean; did: string }): Promise<void> {
+  try {
+    const { CLOUD, pieceGet, piecePut } = await import('../db/cloud-row');
+    if (!CLOUD) return;
+    const list = pieceGet<unknown[]>('telegram-trace') ?? [];
+    piecePut('telegram-trace', [{ at: new Date().toISOString(), ...e }, ...list].slice(0, 30));
+  } catch {
+    /* only a trace */
+  }
+}
 
 /** The bot's own @name (asked once per server instance), to know when a group message is for it. */
 let botName: string | null = null;
@@ -145,9 +167,11 @@ export async function handleTelegramUpdate(update: Update): Promise<void> {
       const audioIn = Boolean(telegramAudio(msg));
       const called = toBot || (mention?.test(text) ?? false) || text.startsWith('/') || calledByName(text);
       nameInVoice = audioIn && !called;
+      const known = Boolean(linkedUser(String(msg.from?.id ?? '')));
+      await traceGroup({ chat: msg.chat.type ?? 'group', called, known, voice: audioIn, did: called ? (known ? 'risponde' : 'chiede di collegarsi') : audioIn ? (known ? 'ascolta il vocale' : 'ignora (sconosciuto)') : 'ignora (non chiamato)' });
       if (!called && !audioIn) return;
       // only the voice notes of people the bot knows are listened to, and only when it can listen
-      if (nameInVoice && (!linkedUser(String(msg.from?.id ?? '')) || !transcriptionConfigured())) return;
+      if (nameInVoice && (!known || !transcriptionConfigured())) return;
       text = withoutName(text.replace(mention ?? /$^/, ' ').replace(/^\/(\w+)@\w+/, '/$1').replace(/\s+/g, ' ').trim());
     }
     if (!rateLimit(`tg:${chatId}`, 20, 60_000)) return;

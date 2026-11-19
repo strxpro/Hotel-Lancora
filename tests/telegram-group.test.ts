@@ -151,3 +151,15 @@ test('voice notes in a group: answered when they start with its name, otherwise 
     delete process.env.GROQ_API_KEY;
   }
 });
+
+test('the Menu button commands work like the quick buttons, in private and in a group', async () => {
+  const { handleTelegramUpdate, BOT_COMMANDS } = await import('../src/server/telegram/handle');
+  assert.ok(BOT_COMMANDS.some((c) => c.command === 'prezzi') && BOT_COMMANDS.some((c) => c.command === 'menu'));
+  await handleTelegramUpdate({ message: { message_id: ++n, chat: { id: OWNER.id, type: 'private' }, from: OWNER, text: '/prezzi' } });
+  assert.match(texts()[0] ?? '', /Prezzi base a notte/);
+  const kb = sent.find((s) => s.method === 'sendMessage')!.body.reply_markup as { is_persistent?: boolean };
+  assert.equal(kb.is_persistent, false, 'the quick buttons can be folded away');
+  sent = [];
+  await handleTelegramUpdate(groupMsg(OWNER, '/libere@LancoraHotelBot'));
+  assert.match(texts()[0] ?? '', /Libere la notte|Nessuna camera libera/);
+});

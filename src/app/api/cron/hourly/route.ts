@@ -3,7 +3,7 @@ import { readDb } from '@/server/db/store';
 import { sendReviewRequests } from '@/server/reviews';
 import { ensureStripeWebhook } from '@/server/payments/webhook-setup';
 import { stablePublicUrl } from '@/server/telegram/poller';
-import { setWebhook, telegramConfigured, tg } from '@/server/telegram/api';
+import { setMenu, setWebhook, telegramConfigured, tg } from '@/server/telegram/api';
 import { syncTables } from '@/server/db/tables-sync';
 import { cloudConfigured } from '@/server/db/cloud';
 import { settleAppUrl } from '@/lib/vercel-url';
@@ -29,10 +29,13 @@ export async function GET(req: Request) {
       const secret = (process.env.TELEGRAM_WEBHOOK_SECRET ?? '').trim();
       if (!telegramConfigured() || !base || secret.length < 16) return 'saltato';
       const url = `${base}/api/telegram/webhook`;
+      // the Menu button with the quick commands (cheap: kept in place every hour)
+      const { BOT_COMMANDS } = await import('@/server/telegram/handle');
+      await setMenu(BOT_COMMANDS).catch((e) => console.error('[telegram] menu:', (e as Error).message));
       const info = await tg<{ url?: string }>('getWebhookInfo');
-      if (info.url === url) return 'invariato';
+      if (info.url === url) return 'invariato · menu ok';
       await setWebhook(url, secret);
-      return 'collegato';
+      return 'collegato · menu ok';
     },
     tables: async () => {
       if (process.env.TABLES_EXPORT === 'off' || !cloudConfigured()) return 'spento';

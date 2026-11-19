@@ -67,6 +67,13 @@ export function answerCallback(id: string, text?: string): Promise<unknown> {
   return call('answerCallbackQuery', { callback_query_id: id, text });
 }
 
+/** Telegram's "Menu" button next to the typing field, with the bot's quick commands (private chats and groups). */
+export async function setMenu(commands: { command: string; description: string }[]): Promise<void> {
+  await call('setMyCommands', { commands });
+  await call('setMyCommands', { commands, scope: { type: 'all_group_chats' } });
+  await call('setChatMenuButton', { menu_button: { type: 'commands' } });
+}
+
 export async function setWebhook(url: string, secret: string): Promise<unknown> {
   return call('setWebhook', { url, secret_token: secret, allowed_updates: ['message', 'callback_query'], drop_pending_updates: false });
 }
