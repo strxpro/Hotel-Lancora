@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import { CalendarRange, Check, CreditCard, Lock, MessageCircle, Send } from 'lucide-react';
-import { useI18n, useIsDesktop } from './providers';
+import { useI18n } from './providers';
 import { RangeCalendar } from './booking/calendar';
 import { CARE_T } from '@/lib/i18n/care-dict';
 import { plural } from '@/lib/i18n/config';
@@ -137,7 +137,6 @@ export function GuestCare(p: GuestCareProps) {
 
 function DatesForm({ token, checkIn, checkOut, busy = [], onDone, onError }: { token: string; checkIn: string; checkOut: string; busy?: string[]; onDone: (text: string) => void; onError: (e?: string) => void }) {
   const { locale, t } = useI18n();
-  const desktop = useIsDesktop();
   const blocked = useMemo(() => new Set(busy), [busy]);
   const day = (d: string) => fmtDate(d, locale, { weekday: 'short', day: 'numeric', month: 'short' });
   const c = CARE_T[locale];
@@ -185,7 +184,7 @@ function DatesForm({ token, checkIn, checkOut, busy = [], onDone, onError }: { t
             ))}
           </div>
           <div className="mt-3 rounded-2xl border border-line bg-white p-3 sm:p-4">
-            <RangeCalendar checkIn={from || null} checkOut={to || null} minDate={todayISO()} months={desktop ? 2 : 1} blockedNights={blocked} onChange={(ci, co) => { setFrom(ci ?? ''); setTo(co ?? ''); }} />
+            <RangeCalendar checkIn={from || null} checkOut={to || null} minDate={todayISO()} months={1} blockedNights={blocked} onChange={(ci, co) => { setFrom(ci ?? ''); setTo(co ?? ''); }} />
           </div>
           {nights > 0 && <p className="mt-2 text-xs text-mist">{plural(locale, nights, t.booking.nights)}{same ? '' : ` · ${c.askDates}`}</p>}
           <label className="mt-3 block">
