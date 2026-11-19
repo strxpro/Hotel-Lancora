@@ -76,11 +76,19 @@ async function botUsername(): Promise<string> {
   return botName;
 }
 
-/** Words that call the assistant at the start of a group message: "Bot, chi arriva oggi?" */
-const WAKE = /^(?:bot|ancora|l\s*['’]?\s*ancora|lancora|assistente|asystent(?:ka)?|asystencie|hotel)\b[\s,.:;!?-]*/i;
+/**
+ * The name that calls the assistant in a group, written or spoken: at the start, maybe after a
+ * greeting ("Bot, chi arriva oggi?", "Ej bot, ile wolnych pokoi?", "Ciao assistente…"), or at the end
+ * ("chi arriva oggi, bot?"). Words of normal talk (e.g. "ancora") never call it.
+ */
+const NAME = '(?:bot|bocie|bota|assistente|asystent(?:ko|cie|ka)?|assistant)';
+const WAKE = new RegExp(`^\\s*(?:(?:ej|hej|hey|hej+|ehi|ei|ehm|ciao|ok|okej|okay|senti|scusa|allora|dai|halo|hallo|cze[sś][cć]|słuchaj|sluchaj|hi|hello)[\\s,.!]+)?${NAME}(?![\\p{L}\\p{N}])[\\s,.:;!?-]*`, 'iu');
+const WAKE_END = new RegExp(`[,–-]\\s*${NAME}[\\s.!?]*$`, 'iu');
+const calledByName = (t: string) => WAKE.test(t) || WAKE_END.test(t);
+const withoutName = (t: string) => t.replace(WAKE, '').replace(WAKE_END, '').trim();
 
 const WELCOME =
-  '✅ Collegato a Hotel L’Ancora.\nUsa i pulsanti qui sotto, oppure scrivimi o mandami un vocale come a una persona: “chi arriva domani?”, “prezzo di agosto 150 euro, 140 in contanti”.\n\nIn un gruppo: aggiungimi al gruppo e chiamami con “Bot, …” oppure rispondendo a un mio messaggio.';
+  '✅ Collegato a Hotel L’Ancora.\nUsa i pulsanti qui sotto, oppure scrivimi o mandami un vocale come a una persona: “chi arriva domani?”, “prezzo di agosto 150 euro, 140 in contanti”.\n\nIn un gruppo: aggiungimi al gruppo (come amministratore) e chiamami per nome, scritto o a voce: “Bot, …”, “Ej bot, …”, “Assistente, …”, oppure rispondi a un mio messaggio.';
 
 /**
  * One Telegram update, start to finish (text, voice, photo, confirm and quick buttons), in a private
@@ -124,18 +132,23 @@ export async function handleTelegramUpdate(update: Update): Promise<void> {
     const group = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
     let text = (msg.text ?? msg.caption ?? '').trim();
     let voice = false;
+    // a voice note in a group that is not an answer to the bot: it is for the bot only if it starts
+    // (or ends) with its name ("Ej bot, …"), which is known after listening to it
+    let nameInVoice = false;
 
-    // in a group the bot speaks only when called: @name, a reply to one of its messages, a command
-    // (/oggi@bot), or a wake word at the start ("Bot, …"). Everything else stays between people.
+    // in a group the bot speaks only when called: its name ("Bot, …", "Ej bot", "Asystent, …"), @name,
+    // a reply to one of its messages, or a command (/oggi@bot). Everything else stays between people.
     if (group) {
       const me = await botUsername();
       const mention = me ? new RegExp(`@${me}\\b`, 'i') : null;
       const toBot = Boolean(msg.reply_to_message?.from?.is_bot && (!me || msg.reply_to_message.from.username?.toLowerCase() === me));
-      const called = toBot || (mention?.test(text) ?? false) || text.startsWith('/') || WAKE.test(text);
-      if (!called) return;
-      text = text.replace(mention ?? /$^/, ' ').replace(WAKE, '').replace(/^\/(\w+)@\w+/, '/$1').replace(/\s+/g, ' ').trim();
-      // a voice note or a photo in a group: only as an answer to the bot (or a photo with a caption that calls it)
-      if (!toBot && telegramAudio(msg)) return;
+      const audioIn = Boolean(telegramAudio(msg));
+      const called = toBot || (mention?.test(text) ?? false) || text.startsWith('/') || calledByName(text);
+      nameInVoice = audioIn && !called;
+      if (!called && !audioIn) return;
+      // only the voice notes of people the bot knows are listened to, and only when it can listen
+      if (nameInVoice && (!linkedUser(String(msg.from?.id ?? '')) || !transcriptionConfigured())) return;
+      text = withoutName(text.replace(mention ?? /$^/, ' ').replace(/^\/(\w+)@\w+/, '/$1').replace(/\s+/g, ' ').trim());
     }
     if (!rateLimit(`tg:${chatId}`, 20, 60_000)) return;
 
@@ -153,7 +166,7 @@ export async function handleTelegramUpdate(update: Update): Promise<void> {
         return true;
       });
       if (!ok) await sendMessage(chatId, 'Codice non valido o scaduto. Generane uno nuovo dal pannello (Automazioni → Telegram).');
-      else if (group) await sendText(chatId, '✅ Gruppo collegato: qui arriveranno anche gli avvisi dell’hotel.\nPer darmi comandi nel gruppo, ognuno collega prima il proprio Telegram in privato con me. Poi chiamatemi con “Bot, …” oppure rispondendo a un mio messaggio.', MENU);
+      else if (group) await sendText(chatId, '✅ Gruppo collegato: qui arriveranno anche gli avvisi dell’hotel.\nPer darmi comandi nel gruppo, ognuno collega prima il proprio Telegram in privato con me. Poi chiamatemi per nome, scritto o a voce (“Bot, …”, “Ej bot, …”, “Assistente, …”) oppure rispondendo a un mio messaggio.', MENU);
       else await sendText(chatId, WELCOME, undefined, { keyboard: KEYBOARD });
       return;
     }
@@ -184,27 +197,35 @@ export async function handleTelegramUpdate(update: Update): Promise<void> {
         await sendMessage(chatId, 'Ho ricevuto un vocale, ma la trascrizione non è ancora collegata. Nel pannello: Impostazioni → Collegamenti → Groq (gratis). Intanto scrivimi il messaggio in testo.');
         return;
       }
+      // a group voice note not yet known to be for the bot: too long or unclear = not for the bot, silently
       if ((audio.duration ?? 0) > 120) {
-        await sendMessage(chatId, 'Vocale troppo lungo: massimo 2 minuti.');
+        if (!nameInVoice) await sendMessage(chatId, 'Vocale troppo lungo: massimo 2 minuti.');
         return;
       }
       if ((audio.file_size ?? 0) > 19_000_000) {
-        await sendMessage(chatId, 'Audio troppo grande: massimo 19 MB. Invia una registrazione più breve.');
+        if (!nameInVoice) await sendMessage(chatId, 'Audio troppo grande: massimo 19 MB. Invia una registrazione più breve.');
         return;
       }
       const file = await downloadFile(audio.file_id);
+      let heard = '';
       try {
         // heard, then cleaned up (misheard words, "no, I mean…") before the assistant reads it
-        text = await polishTranscript(await transcribe(new Blob([file.data], { type: audio.mime_type || 'application/octet-stream' }), audio.file_name || audioName(audio.mime_type, file.path.split('/').pop() || 'voce.ogg')), voiceGlossary(readDb()));
+        heard = await transcribe(new Blob([file.data], { type: audio.mime_type || 'application/octet-stream' }), audio.file_name || audioName(audio.mime_type, file.path.split('/').pop() || 'voce.ogg'));
+        if (nameInVoice && !calledByName(heard.trim())) return; // people talking to each other: the bot stays quiet
+        text = await polishTranscript(heard, voiceGlossary(readDb()));
       } catch (e) {
-        await sendMessage(chatId, escapeHtml(`Non sono riuscito a capire il vocale: ${(e as Error).message}`));
+        if (!nameInVoice) await sendMessage(chatId, escapeHtml(`Non sono riuscito a capire il vocale: ${(e as Error).message}`));
         return;
       }
       if (!text) {
-        await sendMessage(chatId, 'Non ho sentito parole nel vocale, riprova un po’ più vicino al telefono.');
+        if (!nameInVoice) await sendMessage(chatId, 'Non ho sentito parole nel vocale, riprova un po’ più vicino al telefono.');
         return;
       }
-      text = text.replace(WAKE, '').trim();
+      text = withoutName(text) || withoutName(heard.trim());
+      if (!text) {
+        await sendText(chatId, 'Eccomi! Dimmi pure cosa ti serve.', MENU, { replyTo: msg.message_id });
+        return;
+      }
       await sendText(chatId, `🎙 ${HEARD[detectLang(text)] ?? HEARD.it}: “${text}”`, undefined, group ? { replyTo: msg.message_id } : {});
       if (text.length > 600) {
         await sendMessage(chatId, 'La richiesta è troppo lunga. Invia un comando più breve (massimo 600 caratteri trascritti), così non perdo una parte delle istruzioni.');

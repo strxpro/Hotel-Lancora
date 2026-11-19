@@ -16,15 +16,29 @@ after(() => fs.rmSync(dataDir, { recursive: true, force: true }));
 
 type Sent = { method: string; body: Record<string, unknown> };
 let sent: Sent[] = [];
+/** what the fake speech-to-text "hears" in the next voice note */
+let heard = '';
+let listened = 0;
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
   const u = String(url);
+  const json = (x: unknown) => new Response(JSON.stringify(x), { headers: { 'content-type': 'application/json' } });
+  if (u.includes('/audio/transcriptions')) {
+    listened += 1;
+    return json({ text: heard });
+  }
+  // the clean-up of a transcript gives the same words back
+  if (u.includes('/chat/completions')) {
+    const msgs = JSON.parse(String(init?.body)).messages as { role: string; content: string }[];
+    return json({ choices: [{ message: { content: msgs[msgs.length - 1]!.content } }] });
+  }
+  if (u.startsWith('https://api.telegram.org/file/')) return new Response(new Uint8Array([1, 2, 3]));
   if (!u.startsWith('https://api.telegram.org/')) return realFetch(url, init);
   const method = u.split('/').pop()!;
   const body = init?.body ? JSON.parse(String(init.body)) : {};
   sent.push({ method, body });
-  const result = method === 'getMe' ? { username: 'LancoraHotelBot', first_name: 'L’Ancora' } : { message_id: 1 };
-  return new Response(JSON.stringify({ ok: true, result }), { headers: { 'content-type': 'application/json' } });
+  const result = method === 'getMe' ? { username: 'LancoraHotelBot', first_name: 'L’Ancora' } : method === 'getFile' ? { file_path: 'voice/v.oga' } : { message_id: 1 };
+  return json({ ok: true, result });
 }) as typeof fetch;
 beforeEach(() => {
   sent = [];
@@ -92,4 +106,48 @@ test('in the private chat the keyboard buttons work and stay under the answers',
   const m = sent.find((s) => s.method === 'sendMessage')!;
   assert.match(String(m.body.text), /^<b>🏷 Prezzi base a notte/);
   assert.ok((m.body.reply_markup as { keyboard?: unknown[] }).keyboard, 'the quick buttons are there');
+});
+
+test('the name works with a greeting or at the end; ordinary words like “ancora” never call it', async () => {
+  const { handleTelegramUpdate } = await import('../src/server/telegram/handle');
+  await handleTelegramUpdate(groupMsg(OWNER, 'Ej bot, oggi'));
+  assert.match(texts()[0] ?? '', /Arrivi: \d+/);
+  sent = [];
+  await handleTelegramUpdate(groupMsg(OWNER, 'prezzi, bot?'));
+  assert.match(texts()[0] ?? '', /Prezzi base a notte/);
+  sent = [];
+  await handleTelegramUpdate(groupMsg(OWNER, 'Ancora niente da Booking?'));
+  await handleTelegramUpdate(groupMsg(OWNER, 'Il robot della cucina è rotto'));
+  await handleTelegramUpdate(groupMsg(OWNER, 'abbiamo parlato col bot ieri'));
+  await handleTelegramUpdate(groupMsg(OWNER, 'ho chiesto al bot'));
+  assert.deepEqual(texts(), []);
+});
+
+const voiceMsg = (from: typeof OWNER) => ({ message: { message_id: ++n, chat: GROUP, from, voice: { file_id: 'v1', duration: 4, mime_type: 'audio/ogg', file_size: 3000 } } });
+
+test('voice notes in a group: answered when they start with its name, otherwise left alone', async () => {
+  const { handleTelegramUpdate } = await import('../src/server/telegram/handle');
+  // without speech-to-text the bot cannot know: it stays quiet
+  await handleTelegramUpdate(voiceMsg(OWNER));
+  assert.deepEqual(texts(), []);
+  process.env.GROQ_API_KEY = 'gsk_test_test_test_test_test_test_test_test';
+  try {
+    heard = 'Domani arrivo un po’ più tardi, ci vediamo alle dieci.';
+    await handleTelegramUpdate(voiceMsg(OWNER));
+    assert.equal(listened, 1, 'listened to');
+    assert.deepEqual(texts(), [], 'but it was not for the bot');
+    heard = 'Ej bot, oggi';
+    await handleTelegramUpdate(voiceMsg(OWNER));
+    assert.match(texts()[0] ?? '', /🎙/);
+    assert.match(texts()[1] ?? '', /Arrivi: \d+/);
+    sent = [];
+    // a stranger's voice notes are not even listened to
+    const before = listened;
+    heard = 'Bot, pagamenti';
+    await handleTelegramUpdate(voiceMsg(STRANGER));
+    assert.equal(listened, before);
+    assert.deepEqual(texts(), []);
+  } finally {
+    delete process.env.GROQ_API_KEY;
+  }
 });
