@@ -3,16 +3,17 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeft, ArrowRight, Baby, Banknote, BedDouble, BedSingle, Check, CreditCard, Crown, ExternalLink, Layers, Loader2, Minus, Plus, Sofa, Sparkles, Trash2, TriangleAlert, Users, UsersRound, Wand2, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Baby, Banknote, BedDouble, BedSingle, CalendarDays, Check, CreditCard, Crown, ExternalLink, Layers, Loader2, Minus, Plus, Sofa, Sparkles, Trash2, TriangleAlert, Users, UsersRound, Wand2, X } from 'lucide-react';
 import type { BedKind, FloorKey, Locale, Photo, Room, RoomStatus, RoomText, RoomType } from '@/lib/types';
 import { BED_KINDS, bedsCountOf, bedsText, parseBeds, sameBeds, sleepsOf, type BedConfig } from '@/lib/beds';
 import { AMENITIES, AMENITY_KEYS } from '@/content/amenities';
-import { addDays, addMonths, fmtDate, todayISO } from '@/lib/dates';
+import { addMonths, fmtDate, todayISO } from '@/lib/dates';
 import { monthStarts, type MonthPrice } from '@/lib/period-prices';
 import { cn, money } from '@/lib/utils';
 import { Flag } from '@/components/site/flags';
 import { Badge, Button, Dialog, NumInput, Segmented, Toggle, useAction, useToast } from './ui';
 import { PhotoManager } from './photo-manager';
+import { RangeLine, RangePicker } from './range-picker';
 import { addCustomAmenityAction, deleteRoomAction, improveTextAction, removeBlockAction, removeCustomAmenityAction, removeRatePeriodAction, saveRoomAction, suggestRoomAction } from '@/app/admin/actions/rooms';
 
 const STEPS = [
@@ -652,20 +653,26 @@ export function RoomWizard({ room, enableLower, canEditPrice, canDelete, transla
                   <RangeList
                     title="Blocca date"
                     hint="La camera non sarà prenotabile in queste notti (la data finale è il giorno in cui torna libera)."
-                    existing={blocks.map((b) => ({ id: b.id, line: `${fmtDate(b.from)} → ${fmtDate(b.to)} · ${b.reason}`, remove: () => run(() => removeBlockAction(b.id)) }))}
-                    pending={newBlocks.map((b, i) => ({ line: `${fmtDate(b.from)} → ${fmtDate(b.to)} · ${b.reason}`, remove: () => setNewBlocks(newBlocks.filter((_, j) => j !== i)) }))}
+                    existing={blocks.map((b) => ({ id: b.id, from: b.from, to: b.to, note: b.reason, remove: () => run(() => removeBlockAction(b.id)) }))}
+                    pending={newBlocks.map((b, i) => ({ from: b.from, to: b.to, note: b.reason, remove: () => setNewBlocks(newBlocks.filter((_, j) => j !== i)) }))}
                     onAdd={(from, to, extra) => setNewBlocks([...newBlocks, { from, to, reason: extra || 'Blocco manuale' }])}
-                    extraLabel="Motivo"
+                    extraLabel="Motivo (facoltativo)"
+                    addLabel="Blocca delle date"
+                    endLabel="Torna libera il"
+                    lineEnd="→ libera"
                   />
                   {canEditPrice && (
                     <RangeList
                       title="Prezzo diverso in alcuni giorni"
                       hint="Prezzo fisso per notte nel periodo indicato (es. eventi, ponti)."
-                      existing={periods.map((p) => ({ id: p.id, line: `${p.label}: ${fmtDate(p.from)} → ${fmtDate(p.to)} · ${p.mode === 'fixed' ? money(p.value) : `${p.value > 0 ? '+' : ''}${p.value}%`}`, remove: () => run(() => removeRatePeriodAction(p.id)) }))}
-                      pending={newPrices.map((p, i) => ({ line: `${fmtDate(p.from)} → ${fmtDate(p.to)} · ${money(p.price)}`, remove: () => setNewPrices(newPrices.filter((_, j) => j !== i)) }))}
-                      onAdd={(from, to, extra) => setNewPrices([...newPrices, { from, to, price: Number(extra) || f.basePrice, label: `Camera ${f.number}` }])}
-                      extraLabel="Prezzo €"
+                      existing={periods.map((p) => ({ id: p.id, from: p.from, to: p.to, note: `${p.label} · ${p.mode === 'fixed' ? `${money(p.value)} a notte` : `${p.value > 0 ? '+' : ''}${p.value}%`}`, remove: () => run(() => removeRatePeriodAction(p.id)) }))}
+                      pending={newPrices.map((p, i) => ({ from: p.from, to: p.to, note: `${money(p.price)} a notte`, remove: () => setNewPrices(newPrices.filter((_, j) => j !== i)) }))}
+                      onAdd={(from, to, extra) => setNewPrices([...newPrices, { from, to, price: Number(extra.replace(',', '.')) || f.basePrice, label: `Camera ${f.number}` }])}
+                      extraLabel="Prezzo a notte €"
                       extraNumeric
+                      addLabel="Aggiungi un prezzo per alcuni giorni"
+                      endLabel="Fino al"
+                      lineEnd="→"
                     />
                   )}
                   <div>
@@ -893,52 +900,99 @@ function Preview({ f }: { f: Form }) {
   );
 }
 
-function RangeList({ title, hint, existing, pending, onAdd, extraLabel, extraNumeric }: { title: string; hint: string; existing: { id: string; line: string; remove: () => void }[]; pending: { line: string; remove: () => void }[]; onAdd: (from: string, to: string, extra: string) => void; extraLabel: string; extraNumeric?: boolean }) {
-  const today = todayISO();
-  const [from, setFrom] = useState(addDays(today, 7));
-  const [to, setTo] = useState(addDays(today, 10));
+function RangeList({ title, hint, existing, pending, onAdd, extraLabel, extraNumeric, addLabel, endLabel, lineEnd }: { title: string; hint: string; existing: { id: string; from: string; to: string; note: string; remove: () => void }[]; pending: { from: string; to: string; note: string; remove: () => void }[]; onAdd: (from: string, to: string, extra: string) => void; extraLabel: string; extraNumeric?: boolean; addLabel: string; endLabel: string; lineEnd: string }) {
+  // the picker opens only after "Aggiungi": the list stays clean and every date is written in full
+  const [open, setOpen] = useState(false);
+  const [from, setFrom] = useState<string | null>(null);
+  const [to, setTo] = useState<string | null>(null);
   const [extra, setExtra] = useState('');
+  const close = () => {
+    setOpen(false);
+    setFrom(null);
+    setTo(null);
+    setExtra('');
+  };
+  const ready = Boolean(from && to && to > from) && (!extraNumeric || Number(extra.replace(',', '.')) > 0);
   return (
     <div>
       <p className="label">{title}</p>
       <p className="mb-3 text-xs text-mist">{hint}</p>
-      <ul className="mb-3 space-y-1.5">
-        {existing.map((x) => (
-          <li key={x.id} className="flex items-center justify-between rounded-2xl border border-line bg-ivory px-3 py-2 text-sm">
-            {x.line}
-            <button type="button" onClick={x.remove} className="text-xs text-terracotta">
-              Rimuovi
-            </button>
-          </li>
-        ))}
-        {pending.map((x, i) => (
-          <li key={i} className="flex items-center justify-between rounded-2xl border border-dashed border-navy/40 px-3 py-2 text-sm">
-            <span>
-              {x.line} <Badge tone="gold">da salvare</Badge>
-            </span>
-            <button type="button" onClick={x.remove} className="text-xs text-terracotta">
-              Rimuovi
-            </button>
-          </li>
-        ))}
-      </ul>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
-        <input type="date" className="field py-2 text-sm" value={from} min={today} onChange={(e) => setFrom(e.target.value)} aria-label="Dal" />
-        <input type="date" className="field py-2 text-sm" value={to} min={addDays(from, 1)} onChange={(e) => setTo(e.target.value)} aria-label="Al (libera da)" />
-        <input className="field py-2 text-sm" placeholder={extraLabel} inputMode={extraNumeric ? 'decimal' : undefined} value={extra} onChange={(e) => setExtra(e.target.value)} aria-label={extraLabel} />
-        <Button
-          variant="line"
-          size="sm"
-          className="h-auto"
-          disabled={to <= from || (extraNumeric && !(Number(extra) > 0))}
-          onClick={() => {
-            onAdd(from, to, extra);
-            setExtra('');
-          }}
-        >
-          Aggiungi
-        </Button>
-      </div>
+      {existing.length + pending.length > 0 && (
+        <ul className="mb-3 space-y-2">
+          <AnimatePresence initial={false}>
+            {existing.map((x) => (
+              <motion.li key={x.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 30 }} className="flex items-center gap-3 rounded-2xl border border-line bg-ivory px-3.5 py-2.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-navy text-ivory">
+                  <CalendarDays className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <RangeLine from={x.from} to={x.to} note={x.note} endLabel={lineEnd} />
+                </span>
+                <button type="button" onClick={x.remove} className="shrink-0 text-xs font-semibold text-terracotta">
+                  Rimuovi
+                </button>
+              </motion.li>
+            ))}
+            {pending.map((x, i) => (
+              <motion.li key={`p${i}-${x.from}`} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 30 }} className="flex items-center gap-3 rounded-2xl border border-dashed border-navy/40 bg-white px-3.5 py-2.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold/25 text-navy">
+                  <CalendarDays className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <RangeLine from={x.from} to={x.to} note={x.note} endLabel={lineEnd} />
+                  <span className="mt-1 block">
+                    <Badge tone="gold">da salvare</Badge>
+                  </span>
+                </span>
+                <button type="button" onClick={x.remove} className="shrink-0 text-xs font-semibold text-terracotta">
+                  Rimuovi
+                </button>
+              </motion.li>
+            ))}
+          </AnimatePresence>
+        </ul>
+      )}
+      <AnimatePresence initial={false} mode="wait">
+        {open ? (
+          <motion.div key="picker" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.4, ease: [0.22, 0.61, 0.12, 1] }} className="overflow-hidden">
+            <div className="rounded-[1.4rem] border border-line bg-ivory p-4 md:p-5">
+              <RangePicker
+                from={from}
+                to={to}
+                onChange={(a, b) => {
+                  setFrom(a);
+                  setTo(b);
+                }}
+                endLabel={endLabel}
+              />
+              <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4 sm:flex-row sm:items-center">
+                <input className="field py-2 text-sm sm:flex-1" placeholder={extraLabel} inputMode={extraNumeric ? 'decimal' : undefined} value={extra} onChange={(e) => setExtra(e.target.value)} aria-label={extraLabel} />
+                <div className="flex gap-2">
+                  <Button variant="line" size="sm" className="flex-1 sm:flex-none" onClick={close}>
+                    Annulla
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 sm:flex-none"
+                    disabled={!ready}
+                    onClick={() => {
+                      if (!from || !to) return;
+                      onAdd(from, to, extra);
+                      close();
+                    }}
+                  >
+                    <Check className="h-4 w-4" /> Aggiungi
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.button key="add" type="button" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} whileTap={{ scale: 0.98 }} onClick={() => setOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-navy/30 bg-white/70 py-3.5 text-sm font-semibold text-navy transition-colors hover:border-navy hover:bg-white">
+            <Plus className="h-4 w-4 text-gold-2" /> {addLabel}
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
