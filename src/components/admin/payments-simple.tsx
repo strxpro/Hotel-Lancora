@@ -129,7 +129,7 @@ export function AccountCard({ c, mode, demo = true, platformOk = true, support =
               </motion.span>
               <div className="min-w-0">
                 <p className="serif truncate text-[1.5rem] leading-tight text-navy">{c.businessName ?? 'Conto collegato'}</p>
-                <p className="text-xs text-mist">{c.bankLast4 ? `IBAN •••• ${c.bankLast4}` : 'IBAN da aggiungere su Stripe'}</p>
+                <p className="text-xs text-mist">{c.bankLast4 ? `IBAN •••• ${c.bankLast4}` : c.payoutsEnabled ? 'Bonifici sul conto impostato su Stripe' : 'IBAN da aggiungere su Stripe'}</p>
               </div>
             </div>
             <button type="button" onClick={() => setOpen(true)} className="mt-5 flex w-full items-center gap-3 rounded-2xl bg-ivory px-4 py-3 text-left transition-colors hover:bg-sand-2">

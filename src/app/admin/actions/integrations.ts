@@ -147,13 +147,19 @@ export async function setStripeOwnerAction(owner: 'hotel' | 'platform') {
 export async function disconnectStripeAction() {
   return act('settings.edit', async (u) => {
     const prev = readIntegrations().stripe;
-    if (prev?.webhookId) {
+    // both notifications this site made on that Stripe account go with it
+    if (prev?.webhookId || prev?.connectWebhookId) {
       const Stripe = (await import('stripe')).default;
-      await new Stripe(prev.secretKey).webhookEndpoints.del(prev.webhookId).catch(() => null);
+      const client = new Stripe(prev.secretKey);
+      for (const id of [prev.webhookId, prev.connectWebhookId]) if (id) await client.webhookEndpoints.del(id).catch(() => null);
     }
     writeIntegrations({ stripe: undefined });
-    mutate((db) => audit(db, u.name, 'integration', 'stripe', null, 'Stripe scollegato'));
-  }, 'Stripe scollegato: i pagamenti tornano in simulazione.');
+    mutate((db) => {
+      // the panel forgets that account's name and status (a hotel account connected later shows its own)
+      if (db.settings.stripeConnect.direct) clearConnect(db);
+      audit(db, u.name, 'integration', 'stripe', null, `Stripe scollegato (${prev?.accountName ?? '—'})`);
+    });
+  }, process.env.DEMO_MODE === 'false' ? 'Stripe scollegato: finché non colleghi un conto gli ospiti pagano in hotel.' : 'Stripe scollegato: i pagamenti tornano in simulazione.');
 }
 
 /* ---------------- e-mail: Cloudflare Email Service or a Make.com webhook ---------------- */

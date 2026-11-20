@@ -257,6 +257,12 @@ export async function retrieveOwnStatus(): Promise<ConnectStatus> {
   const s = stripe();
   const acc = await s.accounts.retrieveCurrent();
   const st = statusFromAccount(acc);
+  // the IBAN's last digits, when Stripe lets the account read its own bank accounts
+  if (!st.bankLast4) {
+    const ext = await s.accounts.listExternalAccounts(acc.id, { object: 'bank_account', limit: 5 }).catch(() => null);
+    const bank = ext?.data.find((x) => x.object === 'bank_account') as Stripe.BankAccount | undefined;
+    if (bank?.last4) st.bankLast4 = bank.last4;
+  }
   const bs = await s.balanceSettings.retrieve().catch(() => null);
   const sch = bs?.payments?.payouts?.schedule;
   if (sch?.interval && ['daily', 'weekly', 'monthly'].includes(sch.interval)) {
