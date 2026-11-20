@@ -17,7 +17,7 @@ import { PanelSearch } from './panel-search';
 import { AssistCursor } from './assist-cursor';
 import { GuestCardProvider } from './guest-card';
 import { logout } from '@/app/admin/auth-actions';
-import { markNotificationsRead } from '@/app/admin/actions/misc';
+import { markNotificationsRead, markSectionRead } from '@/app/admin/actions/misc';
 
 const NAV = [
   { href: '/admin', label: 'Oggi', icon: LayoutDashboard, exact: true },
@@ -46,7 +46,7 @@ const MOBILE = [
 
 export interface ShellProps {
   user: { name: string; role: 'admin' | 'staff' };
-  counts: { notifications: number; messages: number; unassigned: number; mail?: number };
+  counts: { notifications: number; messages: number; unassigned: number; mail?: number; sections?: Record<string, number> };
   notifications: AppNotification[];
   demo: boolean;
   whisper?: boolean;
@@ -86,6 +86,18 @@ export function AdminShell({ user, counts, notifications, demo, whisper = false,
 
   const active = (href: string, exact?: boolean) => (exact ? pathname === href : pathname.startsWith(href));
   const badgeFor = (b?: 'unassigned' | 'messages' | 'mail') => (b === 'unassigned' ? counts.unassigned : b === 'messages' ? counts.messages : b === 'mail' ? (counts.mail ?? 0) : 0);
+  // new things per menu item (red); Messaggi and Posta already count their unread items (gold)
+  const freshFor = (n: { href: string; badge?: string }) => (n.badge === 'messages' || n.badge === 'mail' ? 0 : (counts.sections?.[n.href] ?? 0));
+  const moreFresh = NAV.filter((n) => !MOBILE.some((m) => m.href === n.href)).some((n) => freshFor(n) > 0 || (n.badge && n.badge !== 'unassigned' && badgeFor(n.badge) > 0));
+  // opening a section marks what was new there as seen
+  const seen = useRef('');
+  useEffect(() => {
+    const here = NAV.find((n) => active(n.href, n.exact));
+    if (!here || !(counts.sections?.[here.href] ?? 0) || seen.current === here.href + pathname) return;
+    seen.current = here.href + pathname;
+    void markSectionRead(here.href).then(() => router.refresh());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, counts.sections]);
 
   return (
     <ToastProvider>
@@ -119,6 +131,7 @@ export function AdminShell({ user, counts, notifications, demo, whisper = false,
                       {on && <motion.span layoutId="admin-nav-bar" className="absolute inset-y-2.5 left-1 w-1 rounded-full bg-gold" />}
                       <n.icon className="relative h-4 w-4" strokeWidth={1.6} />
                       <span className="relative flex-1">{n.label}</span>
+                      {freshFor(n) > 0 && <FreshPill n={freshFor(n)} />}
                       {b > 0 && <span className="relative min-w-5 rounded-full bg-gold px-1.5 text-center text-[0.65rem] font-bold text-navy-3">{b}</span>}
                     </Link>
                   </li>
@@ -151,8 +164,9 @@ export function AdminShell({ user, counts, notifications, demo, whisper = false,
               {demo && <span className="mr-1 bg-gold/15 px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-[0.12em] text-gold-2 lg:hidden">Demo</span>}
               <HelpButton />
               <Notifications items={notifications} unread={counts.notifications} />
-              <button type="button" onClick={() => setMenu(true)} aria-label="Menu" className="flex h-10 w-10 items-center justify-center rounded-full text-navy hover:bg-navy/5 lg:hidden">
+              <button type="button" onClick={() => setMenu(true)} aria-label={moreFresh ? 'Menu (novità)' : 'Menu'} className="relative flex h-10 w-10 items-center justify-center rounded-full text-navy hover:bg-navy/5 lg:hidden">
                 <MoreHorizontal className="h-5 w-5" />
+                {moreFresh && <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-terracotta ring-2 ring-ivory" />}
               </button>
               <button type="button" data-tour="assistant" onClick={() => setAssistant(true)} aria-expanded={assistant} className="group hidden h-10 items-center gap-2 rounded-full bg-navy pl-3 pr-4 text-xs font-semibold text-ivory transition-transform active:scale-95 md:inline-flex">
                 <Sparkles className="h-4 w-4 text-gold transition-transform duration-500 group-hover:rotate-12 group-hover:scale-110" /> Chiedi all’assistente
@@ -175,7 +189,10 @@ export function AdminShell({ user, counts, notifications, demo, whisper = false,
                 ) : (
                   <span className={cn('relative flex flex-col items-center gap-0.5 rounded-2xl py-2 text-[0.6rem] font-semibold transition-colors', on ? 'text-navy-3' : 'text-ivory/70')}>
                     {on && <motion.span layoutId="mobile-tab" className="absolute inset-0 rounded-2xl bg-ivory" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
-                    <n.icon className="relative h-5 w-5" strokeWidth={1.7} />
+                    <span className="relative">
+                      <n.icon className="h-5 w-5" strokeWidth={1.7} />
+                      {(counts.sections?.[n.href] ?? 0) > 0 && <span className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full bg-terracotta ring-2 ring-navy" aria-label="Novità" />}
+                    </span>
                     <span className="relative">{n.label}</span>
                   </span>
                 );
@@ -229,7 +246,9 @@ export function AdminShell({ user, counts, notifications, demo, whisper = false,
             {NAV.map((n) => (
               <li key={n.href}>
                 <Link href={n.href} className={cn('flex items-center gap-3 rounded-2xl border px-3 py-3 text-sm', active(n.href, n.exact) ? 'border-navy text-navy' : 'border-line bg-white text-charcoal')}>
-                  <n.icon className="h-4 w-4 text-gold-2" /> {n.label}
+                  <n.icon className="h-4 w-4 shrink-0 text-gold-2" /> <span className="min-w-0 flex-1 truncate">{n.label}</span>
+                  {freshFor(n) > 0 && <FreshPill n={freshFor(n)} />}
+                  {badgeFor(n.badge) > 0 && <span className="min-w-5 rounded-full bg-gold px-1.5 text-center text-[0.65rem] font-bold text-navy-3">{badgeFor(n.badge)}</span>}
                 </Link>
               </li>
             ))}
@@ -388,4 +407,14 @@ function useGlassLight() {
       if (raf) cancelAnimationFrame(raf);
     };
   }, []);
+}
+
+/** "Something new here": a red number next to the menu item, with a soft pulse. */
+function FreshPill({ n }: { n: number }) {
+  return (
+    <span className="relative flex min-w-5 items-center justify-center" title={`${n} ${n === 1 ? 'novità' : 'novità'}`}>
+      <span className="absolute inset-0 animate-ping rounded-full bg-terracotta/50" />
+      <span className="relative min-w-5 rounded-full bg-terracotta px-1.5 text-center text-[0.65rem] font-bold text-white">{n}</span>
+    </span>
+  );
 }

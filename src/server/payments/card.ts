@@ -3,7 +3,7 @@ import type Stripe from 'stripe';
 import type { Booking, Payment, SavedCard } from '@/lib/types';
 import { roomConflicts, round2 } from '@/lib/availability';
 import { fmtDate } from '@/lib/dates';
-import { BookingError, confirmPayAtHotel } from '../bookings';
+import { BookingError, cancelBooking, confirmPayAtHotel } from '../bookings';
 import { mutate, newId, readDb } from '../db/store';
 import { audit, guestName, notify } from '../events';
 import { payoutDestination, platformFee, stripe, stripeMode } from './stripe';
@@ -19,7 +19,7 @@ import { payoutDestination, platformFee, stripe, stripeMode } from './stripe';
  * Only ids, brand, last 4 digits and expiry are stored: never the card number.
  */
 
-export type CardPurpose = 'guarantee' | 'card_update';
+export type CardPurpose = 'guarantee' | 'card_update' | 'cancel_fee';
 
 export const cardsAvailable = (): boolean => stripeMode() !== 'off';
 const provider = (): Payment['provider'] => (stripeMode() === 'live' ? 'stripe' : 'stripe_test');
@@ -85,6 +85,7 @@ export async function completeCardSession(sessionId: string, bookingId?: string)
     const card = cardOf(pi?.payment_method as Stripe.PaymentMethod | null, (pi?.customer as string | null) ?? (s.customer as string | null));
     if (card) keepCard(id, card, 'Ospite');
     if (purpose === 'card_update') cardRequestDone(id, card, (s.amount_total ?? 0) / 100, pi?.id ?? s.id);
+    if (purpose === 'cancel_fee') cancelFeePaid(id, (s.amount_total ?? 0) / 100, pi?.id ?? s.id);
     return 'done';
   } catch (e) {
     console.error('[carta] verifica non riuscita:', (e as Error).message);
@@ -106,6 +107,21 @@ function reopenExpiredHold(bookingId: string): boolean {
     b.holdExpiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
     return true;
   });
+}
+
+/** The guest paid the late-cancellation fee online: the payment is recorded and the booking cancelled (once). */
+function cancelFeePaid(bookingId: string, paid: number, reference: string): void {
+  const open = mutate((db) => {
+    const b = db.bookings.find((x) => x.id === bookingId);
+    if (!b) return false;
+    if (paid > 0 && !db.payments.some((p) => p.reference === reference && p.status === 'succeeded')) {
+      db.payments.push({ id: newId('pay-'), bookingId: b.id, amount: round2(paid), kind: 'balance', provider: provider(), status: 'succeeded', reference, createdAt: new Date().toISOString() });
+      b.amountPaid = round2(b.amountPaid + paid);
+      audit(db, 'Ospite', 'cancel_fee', 'booking', b.id, `${b.code} · penale di cancellazione pagata online € ${paid.toFixed(2)}`);
+    }
+    return b.status !== 'cancelled';
+  });
+  if (open) cancelBooking(bookingId, 'Ospite (area ospite)', { refundAmount: 0, reason: `dall’ospite online, con la penale pagata (€ ${paid.toFixed(2)})` });
 }
 
 /** The guest updated the card (and paid, when the request had an amount): the owner is told. */

@@ -1,14 +1,18 @@
 'use server';
-import { isFreeCancel } from '@/lib/cancellation';
+import { cancelFeeAmount, isFreeCancel } from '@/lib/cancellation';
+import { round2 } from '@/lib/availability';
+import { money } from '@/lib/utils';
+import { CANCEL_T } from '@/lib/i18n/stay-dict';
+import { cardPaymentsReady } from '@/server/payments/stripe';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { BookingError, findBookingByToken } from '@/server/bookings';
 import { answerChange, askFreeCancel, cancelAndRefund, postMessage, proposeDates, withdrawChange } from '@/server/booking-care';
-import { startCardCheckout } from '@/server/payments/card';
+import { cardsAvailable, startCardCheckout } from '@/server/payments/card';
 import { mutate, newId, readDb } from '@/server/db/store';
 import { audit } from '@/server/events';
 import { clean, clientIp, rateLimit, requestOrigin } from '@/server/security';
-import { todayISO } from '@/lib/dates';
+import { diffDays, todayISO } from '@/lib/dates';
 import { isLocale, localePath } from '@/lib/i18n/config';
 
 async function limited(key: string, n: number): Promise<boolean> {
@@ -54,6 +58,52 @@ export async function guestCancel(token: string): Promise<Res> {
     return done();
   } catch (e) {
     return fail(e);
+  }
+}
+
+export type LateCancel = { ok: true; url: string | null; requested?: boolean } | { ok: false; error: string };
+
+/**
+ * Cancelling after the free period: the fee is kept from what was paid (the rest goes back), or the
+ * guest pays what is missing on Stripe's page and the booking is cancelled as soon as it is paid.
+ * Without card payments on the site the reception gets the request (and the owner a Telegram message).
+ */
+export async function cancelWithFee(token: string, locale: string): Promise<LateCancel> {
+  if (await limited('guest-cancel', 5)) return { ok: false, error: 'too_many' };
+  const b = findBookingByToken(token);
+  if (!b || b.status !== 'confirmed') return { ok: false, error: 'not_found' };
+  const db = readDb();
+  const today = todayISO();
+  if (b.checkIn < today) return { ok: false, error: 'not_allowed' };
+  if (isFreeCancel(today, b.checkIn, db.settings.payments.freeCancellationDays)) {
+    const r = await guestCancel(token);
+    return r.ok ? { ok: true, url: null } : { ok: false, error: r.error ?? 'error' };
+  }
+  const fee = cancelFeeAmount(db.settings.payments, b.total, diffDays(b.checkIn, b.checkOut));
+  const due = round2(fee - b.amountPaid);
+  const l = isLocale(locale) ? locale : 'it';
+  try {
+    if (due <= 0) {
+      await cancelAndRefund(b.id, 'Ospite (area ospite)', { refund: round2(b.amountPaid - fee), reason: `dall’ospite online, trattenuta la penale di € ${fee.toFixed(2)}` });
+      return { ...done(), url: null } as LateCancel;
+    }
+    if (cardsAvailable() && cardPaymentsReady(db)) {
+      const base = await requestOrigin();
+      const page = `${base}${localePath(l, `/soggiorno/${b.token}`)}`;
+      const url = await startCardCheckout(b, { purpose: 'cancel_fee', amount: due, successUrl: `${page}?carta={CHECKOUT_SESSION_ID}`, cancelUrl: `${page}?carta=annullata`, locale: l });
+      mutate((d) => audit(d, 'Ospite', 'card_page', 'booking', b.id, `${b.code} · aperta la pagina per pagare la penale di cancellazione (€ ${due.toFixed(2)})`));
+      return { ok: true, url };
+    }
+    // no card payments on the site: the reception arranges the fee and the cancellation
+    const fmt = money(fee, l, 2);
+    const text = CANCEL_T[l].msg.replace('{fee}', fmt);
+    postMessage(b.id, 'guest', l === 'it' ? text : `${text}
+(${CANCEL_T.it.msg.replace('{fee}', money(fee, 'it', 2))})`, 'Ospite');
+    revalidatePath('/', 'layout');
+    return { ok: true, url: null, requested: true };
+  } catch (e) {
+    const f = fail(e);
+    return { ok: false, error: f.error ?? 'error' };
   }
 }
 

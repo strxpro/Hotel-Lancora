@@ -239,6 +239,7 @@ export function buildSystemPrompt(db: DB, lang: Locale, today: string): string {
     'Stile: caldo e accogliente come una brava receptionist, frasi brevi e chiare, massimo 90 parole, niente markdown. Al massimo una emoji adatta. Se serve, chiudi con un passo utile (es. scegliere le date sul sito o scrivere alla reception).',
     'REGOLE: usa solo i dati qui sotto. Non inventare servizi, prezzi, orari o disponibilità. Se un dato manca o è "non confermato", dillo e suggerisci di contattare la reception.',
     'Non hai accesso a dati di prenotazioni o ospiti e non devi chiederli. Non chiedere dati di pagamento.',
+    'Quando proponi o consigli una camera, scrivi il suo nome come nell’elenco CAMERE: il sito mostra sotto la tua risposta le foto delle camere che nomini. Proponi al massimo 3 camere, adatte al numero di ospiti.',
     `Contatti reception: ${h.phone} · ${h.email}. Indirizzo: ${h.addressVerified ? `${h.addressLine}, ${h.postalCode} ${h.city}` : 'da confermare con la reception'}.`,
     `Check-in ${h.checkInFrom}–${h.checkInTo}, check-out entro ${h.checkOutBy}${h.factsVerified ? '' : db.settings.demoMode ? ' (dati dimostrativi)' : ' (da confermare con la reception)'}.`,
     `Cancellazione: ${cancelText('it', db.settings.payments)} ${db.settings.payments.cancellationPolicy}`,

@@ -8,7 +8,9 @@ import { localePath } from '@/lib/i18n/config';
 import { ACCOUNT_T } from '@/lib/i18n/account-dict';
 import { CARE_T } from '@/lib/i18n/care-dict';
 import { GUEST_COOKIE, readGuest } from '@/server/guest-access';
-import { cancelText, isFreeCancel } from '@/lib/cancellation';
+import { cancelFeeAmount, cancelText, isFreeCancel } from '@/lib/cancellation';
+import { cardsAvailable } from '@/server/payments/card';
+import { cardPaymentsReady } from '@/server/payments/stripe';
 import { fill, isLocale, plural } from '@/lib/i18n/config';
 import { getDictionary } from '@/lib/i18n/dictionaries';
 import type { Locale } from '@/lib/types';
@@ -55,6 +57,9 @@ export default async function GuestPage({ params, searchParams }: { params: Prom
   const signedIn = readGuest((await cookies()).get(GUEST_COOKIE)?.value) === b.guest.email.trim().toLowerCase();
   // the dates can still be changed: a confirmed stay that has not ended
   const canChangeDates = b.status === 'confirmed' && isBookingActive(b) && b.checkOut > today && !stayed;
+  // after the free period the guest can still cancel: the fee is kept from what was paid, or paid online
+  const fee = cancelFeeAmount(db.settings.payments, b.total, nights);
+  const late = b.status === 'confirmed' && !canCancel && b.checkIn >= today ? { fee, due: Math.max(0, Math.round((fee - b.amountPaid) * 100) / 100), refund: Math.max(0, Math.round((b.amountPaid - fee) * 100) / 100), online: cardsAvailable() && cardPaymentsReady(db) } : null;
 
   return (
     <div className="bg-ivory pb-28 pt-32 md:pt-44">
@@ -112,7 +117,7 @@ export default async function GuestPage({ params, searchParams }: { params: Prom
             busy={b.roomId ? (() => { const mine = new Set(eachNight(b.checkIn, b.checkOut)); return occupiedNights(db, b.roomId, today, addDays(today, 400)).filter((d) => !mine.has(d)); })() : []}
             change={change ? { kind: change.kind, by: change.by, checkIn: change.checkIn, checkOut: change.checkOut, total: change.total, note: change.note, status: change.status, answer: change.answer, recent: Boolean(change.answeredAt && Date.now() - new Date(change.answeredAt).getTime() < 14 * 86_400_000) } : null}
           />
-          {stayed ? <FeedbackForm token={b.token} reviewUrl={h.googleReviewUrl} /> : <GuestActions token={b.token} canCancel={canCancel} cancelled={b.status === 'cancelled'} cancelRule={cancelRule} canAskFree={b.status === 'confirmed' && b.checkIn >= today} asked={b.changeRequest?.status === 'pending'} />}
+          {stayed ? <FeedbackForm token={b.token} reviewUrl={h.googleReviewUrl} /> : <GuestActions token={b.token} late={late} canCancel={canCancel} cancelled={b.status === 'cancelled'} cancelRule={cancelRule} canAskFree={b.status === 'confirmed' && b.checkIn >= today} asked={b.changeRequest?.status === 'pending'} />}
         </div>
       </div>
     </div>

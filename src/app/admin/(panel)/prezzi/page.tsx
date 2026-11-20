@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { BedDouble, Landmark, PackagePlus, Percent } from 'lucide-react';
+import { BedDouble, CalendarX2, Landmark, PackagePlus, Percent } from 'lucide-react';
 import { requirePageUser, can } from '@/server/auth/guard';
 import { readDb } from '@/server/db/store';
 import { roomOptions } from '@/server/admin-data';
@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/admin/ui';
 import { PricesManager, PricingRulesForm } from '@/components/admin/managers';
 import { ExtrasEditor } from '@/components/admin/extras-editor';
+import { CancellationCard } from '@/components/admin/cancellation-card';
+import { DEFAULT_CANCEL_FEE } from '@/lib/cancellation';
 
 export const metadata = { title: 'Prezzi' };
 
@@ -19,6 +21,7 @@ const TABS = [
   { id: 'sconti', label: 'Sconti e trattamento', icon: Percent },
   { id: 'tassa', label: 'Tassa di soggiorno', icon: Landmark },
   { id: 'supplementi', label: 'Supplementi', icon: PackagePlus },
+  { id: 'cancellazione', label: 'Cancellazione', icon: CalendarX2 },
 ] as const;
 type Tab = (typeof TABS)[number]['id'];
 
@@ -38,6 +41,7 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
     sconti: rules.singleUsePercent > 0 ? `uso singola −${rules.singleUsePercent}%` : null,
     tassa: tax?.enabled ? `${String(tax.amount).replace('.', ',')} €` : 'spenta',
     supplementi: extrasOn ? String(extrasOn) : null,
+    cancellazione: `${db.settings.payments.freeCancellationDays} g`,
   };
   return (
     <div>
@@ -65,6 +69,7 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
       {tab === 'sconti' && <PricingRulesForm part="rules" initial={rules} cashPercent={cashPercent} canEdit={canEdit} />}
       {tab === 'tassa' && <PricingRulesForm part="tax" initial={rules} cashPercent={cashPercent} canEdit={canEdit} />}
       {tab === 'supplementi' && <ExtrasEditor initial={extrasList(db.settings.pricing?.extras)} canEdit={canEdit} />}
+      {tab === 'cancellazione' && <CancellationCard initial={{ freeCancellationDays: db.settings.payments.freeCancellationDays, cancellationFee: db.settings.payments.cancellationFee ?? DEFAULT_CANCEL_FEE }} canEdit={canEdit} />}
     </div>
   );
 }

@@ -29,9 +29,14 @@ export interface ChatRoom {
   id: string;
   name: string;
   photo: string | null;
+  /** up to three photos for the card */
+  photos?: string[];
+  /** with dates: the stay total, its nights and the average night; without (nights 0): `from` per night */
   total: number;
   avg: number;
   nights: number;
+  from?: number;
+  beds?: string;
   maxGuests: number;
   href: string;
 }
@@ -434,6 +439,8 @@ export function answerStay(db: DB, stay: Stay, lang: Locale, today: string): Sta
     id: r.room.id,
     name: r.room.name,
     photo: r.room.photo?.src ?? null,
+    photos: r.room.photos.slice(0, 3).map((p) => p.src),
+    beds: r.room.beds,
     total: r.total,
     avg: r.averageNight,
     nights: r.nights,

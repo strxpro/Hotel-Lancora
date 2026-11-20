@@ -10,6 +10,7 @@ import { transcriptionConfigured } from '@/server/ai/transcribe';
 import { setupView } from '@/server/setup';
 import { liveConfigured } from '@/server/ai/live';
 import { mailUnreadCached } from '@/server/mail/mailbox';
+import { newBySection } from '@/lib/admin-sections';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: { default: 'Pannello', template: '%s · Pannello L’Ancora' }, robots: { index: false, follow: false } };
@@ -26,6 +27,8 @@ export default async function PanelLayout({ children }: { children: React.ReactN
     unassigned: db.bookings.filter((b) => !b.roomId && isBookingActive(b) && b.checkOut > today).length,
     // last known unread e-mails of the hotel mailbox (read in the background, never slows the page)
     mail: mailUnreadCached() ?? 0,
+    // what is new, menu item by menu item (a new booking lights up "Prenotazioni", a payment "Pagamenti"…)
+    sections: newBySection(db.notifications),
   };
   return (
     <AdminShell user={{ name: user.name, role: user.role }} counts={counts} notifications={db.notifications.slice(0, 12)} demo={process.env.DEMO_MODE === 'true' && db.settings.demoMode} whisper={transcriptionConfigured()} setup={user.role === 'admin' ? setupView(db, user.id) : undefined} live={liveConfigured()}>

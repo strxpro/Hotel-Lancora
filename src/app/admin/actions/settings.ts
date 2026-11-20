@@ -58,6 +58,24 @@ export async function saveExtrasAction(raw: unknown) {
   }, 'Salvato.');
 }
 
+/** Prezzi → Cancellazione: the free days and what a late cancellation costs (saved by themselves). */
+export async function saveCancellationAction(raw: unknown) {
+  return act('prices.edit', (u) => {
+    const c = z
+      .object({
+        freeCancellationDays: z.number().int().min(0).max(90),
+        cancellationFee: z.object({ type: z.enum(['percent', 'first_night', 'fixed']), value: z.number().min(0).max(10000) }),
+      })
+      .refine((v) => v.cancellationFee.type !== 'percent' || v.cancellationFee.value <= 100, 'La penale in percentuale non può superare il 100%.')
+      .parse(raw);
+    mutate((db) => {
+      db.settings.payments = { ...db.settings.payments, ...c };
+      const f = c.cancellationFee;
+      audit(db, u.name, 'settings', 'payments', null, `Cancellazione gratuita fino a ${c.freeCancellationDays} giorni prima · poi ${f.type === 'percent' ? `${f.value}% del soggiorno` : f.type === 'first_night' ? 'la prima notte' : `€ ${f.value}`}`);
+    });
+  }, 'Salvato.');
+}
+
 export async function savePaymentsAction(raw: unknown) {
   return act('payments.manage', (u) => {
     const p = z

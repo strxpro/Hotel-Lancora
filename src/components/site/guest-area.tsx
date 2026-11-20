@@ -3,14 +3,19 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Star } from 'lucide-react';
 import { useI18n } from './providers';
-import { askFreeCancellation, guestCancel, sendFeedback } from '@/app/[locale]/soggiorno/actions';
+import { askFreeCancellation, cancelWithFee, guestCancel, sendFeedback } from '@/app/[locale]/soggiorno/actions';
 import { CARE_T } from '@/lib/i18n/care-dict';
+import { CANCEL_T } from '@/lib/i18n/stay-dict';
+import { money } from '@/lib/utils';
+
+/** After the free period: what cancelling costs now, and whether the guest can pay it on the site. */
+export type LateCancelInfo = { fee: number; due: number; refund: number; online: boolean };
 
 /**
  * Cancelling from the guest area: free until the deadline (everything paid goes back by itself);
  * afterwards the guest can ask the hotel for a free cancellation, and the hotel decides.
  */
-export function GuestActions({ token, canCancel, cancelled, cancelRule, canAskFree, asked }: { token: string; canCancel: boolean; cancelled: boolean; cancelRule?: string; canAskFree?: boolean; asked?: boolean }) {
+export function GuestActions({ token, canCancel, cancelled, cancelRule, canAskFree, asked, late = null }: { token: string; canCancel: boolean; cancelled: boolean; cancelRule?: string; canAskFree?: boolean; asked?: boolean; late?: LateCancelInfo | null }) {
   const { t, locale } = useI18n();
   const c = CARE_T[locale];
   const router = useRouter();
@@ -26,6 +31,17 @@ export function GuestActions({ token, canCancel, cancelled, cancelRule, canAskFr
       <section className="border-t border-line pt-10">
         <h2 className="serif text-[1.9rem] text-navy">{t.guest.cancel}</h2>
         {cancelRule && <p className="mt-3 rounded-2xl border border-line bg-white px-4 py-3 text-sm leading-relaxed text-charcoal/85">{cancelRule}</p>}
+        {!canCancel && late && (
+          <LateCancel
+            token={token}
+            late={late}
+            onDone={(text) => {
+              if (text) setMsg({ ok: true, text });
+              router.refresh();
+            }}
+            onError={(e) => setMsg({ ok: false, text: err(e) })}
+          />
+        )}
         {!canCancel ? (
           canAskFree && !asked ? (
             <div className="mt-4">
@@ -59,9 +75,9 @@ export function GuestActions({ token, canCancel, cancelled, cancelRule, canAskFr
                 </form>
               )}
             </div>
-          ) : (
+          ) : asked || !late ? (
             <p className="mt-3 text-sm text-mist">{asked ? c.waiting : t.guest.cancelNotAllowed}</p>
-          )
+          ) : null
         ) : confirm ? (
           <div className="mt-4 border border-terracotta/30 bg-terracotta/5 p-5">
             <p className="text-sm text-charcoal">{t.guest.cancelConfirm}</p>
@@ -92,6 +108,48 @@ export function GuestActions({ token, canCancel, cancelled, cancelRule, canAskFr
         )}
       </section>
       {msg && <p className={msg.ok ? 'text-sm text-sage' : 'text-sm text-terracotta'} role="status">{msg.text}</p>}
+    </div>
+  );
+}
+
+/** "You can still cancel": the fee, then one confirmation; the payment page opens when something is to pay. */
+function LateCancel({ token, late, onDone, onError }: { token: string; late: LateCancelInfo; onDone: (text: string) => void; onError: (e?: string) => void }) {
+  const { locale } = useI18n();
+  const x = CANCEL_T[locale];
+  const [confirm, setConfirm] = useState(false);
+  const [pending, start] = useTransition();
+  const fmt = (n: number) => money(n, locale, 2);
+  const line = late.due > 0 ? (late.online ? x.due : x.fee).replace('{fee}', fmt(late.fee)) : late.refund > 0 ? x.kept.replace('{fee}', fmt(late.fee)).replace('{refund}', fmt(late.refund)) : x.covered.replace('{fee}', fmt(late.fee));
+  const label = late.due > 0 && late.online ? x.pay.replace('{due}', fmt(late.due)) : x.cancel;
+  const go = () =>
+    start(async () => {
+      const r = await cancelWithFee(token, locale);
+      if (!r.ok) return onError(r.error);
+      if (r.url) return window.location.assign(r.url);
+      onDone(r.requested ? x.requested : '');
+    });
+  return (
+    <div className="mt-4 rounded-2xl border border-navy/20 bg-white p-5" data-testid="late-cancel">
+      <p className="font-semibold text-navy">{x.title}</p>
+      <p className="mt-1.5 text-sm leading-relaxed text-charcoal/80">{line}</p>
+      {late.due > 0 && <p className="mt-1 text-xs text-mist">{late.online ? x.online : x.offline}</p>}
+      {!confirm ? (
+        <button type="button" className="btn btn-navy mt-4" onClick={() => setConfirm(true)}>
+          {label}
+        </button>
+      ) : (
+        <div className="mt-4 rounded-xl border border-terracotta/30 bg-terracotta/5 p-4">
+          <p className="text-sm text-charcoal">{x.confirm}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" disabled={pending} className="btn h-11 min-h-0 bg-terracotta text-ivory hover:bg-terracotta/90" onClick={go}>
+              {label === x.cancel ? x.yes : label}
+            </button>
+            <button type="button" className="btn btn-line h-11 min-h-0 text-navy" onClick={() => setConfirm(false)}>
+              {x.no}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

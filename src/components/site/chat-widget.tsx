@@ -11,7 +11,7 @@ import { useI18n, useLenis } from './providers';
 import { AnchorMark } from './brand';
 import type { Locale } from '@/lib/types';
 
-type ChatRoom = { id: string; name: string; photo: string | null; total: number; avg: number; nights: number; maxGuests: number; href: string };
+type ChatRoom = { id: string; name: string; photo: string | null; photos?: string[]; total: number; avg: number; nights: number; from?: number; beds?: string; maxGuests: number; href: string };
 type Msg = { id: string; role: 'user' | 'assistant'; text: string; actions?: { label: string; href: string }[]; rooms?: ChatRoom[]; suggest?: string[]; live?: boolean; voice?: boolean; clip?: VoiceClip | null };
 const EASE = [0.22, 0.61, 0.12, 1] as const;
 const HEARD: Record<string, string> = { it: 'Ho capito', en: 'I understood', pl: 'Zrozumiałem', de: 'Verstanden', fr: 'J’ai compris', es: 'He entendido' };
@@ -352,33 +352,13 @@ function Bubble({ msg, locale, onAction, onSuggest }: { msg: Msg; locale: Locale
             {LIVE[locale] ?? LIVE.it}
           </span>
         )}
-        {msg.voice ? <VoiceNote text={text} clip={msg.clip} heard={HEARD[locale] ?? HEARD.it!} /> : text}
+        {/* the AI sometimes writes **bold**: the bubble shows plain words */}
+        {msg.voice ? <VoiceNote text={text} clip={msg.clip} heard={HEARD[locale] ?? HEARD.it!} /> : text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/^\s*[*-]\s+/gm, '• ')}
       </div>
 
-      {/* the free rooms, each one opening the booking with these dates and that room already chosen */}
-      {rooms && rooms.length > 0 && (
-        <motion.ul initial="h" animate="v" transition={{ staggerChildren: 0.07 }} className="mt-2 w-full max-w-[88%] space-y-1.5">
-          {rooms.map((r) => (
-            <motion.li key={r.id} variants={POP}>
-              <Link href={r.href} onClick={onAction} className="group flex items-center gap-3 border border-line bg-white p-1.5 pr-3 transition-colors hover:border-navy">
-                <span className="relative h-14 w-16 shrink-0 overflow-hidden bg-sand">
-                  {r.photo && <Image src={r.photo} alt="" fill sizes="64px" className="object-cover transition-transform duration-700 group-hover:scale-110" />}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[0.86rem] font-medium text-navy">{r.name}</span>
-                  <span className="block text-[0.72rem] text-mist">
-                    {money(r.avg, locale)} × {r.nights}
-                  </span>
-                </span>
-                <span className="text-right">
-                  <span className="serif block text-[1.05rem] leading-none text-navy">{money(r.total, locale)}</span>
-                  <ArrowRight className="ml-auto mt-1 h-3.5 w-3.5 text-gold-2 transition-transform duration-300 group-hover:translate-x-0.5" />
-                </span>
-              </Link>
-            </motion.li>
-          ))}
-        </motion.ul>
-      )}
+      {/* the rooms of the answer, with their photos: with dates each opens the booking with that room
+          already chosen, without dates the room's page (calendar, price of every night, booking) */}
+      {rooms && rooms.length > 0 && <RoomCards rooms={rooms} locale={locale} onAction={onAction} />}
 
       {actions && actions.length > 0 && (
         <motion.div initial="h" animate="v" transition={{ staggerChildren: 0.06, delayChildren: rooms?.length ? 0.2 : 0 }} className="mt-2 flex flex-wrap gap-2">
@@ -408,5 +388,69 @@ function Bubble({ msg, locale, onAction, onSuggest }: { msg: Msg; locale: Locale
         </motion.div>
       )}
     </motion.div>
+  );
+}
+
+const ROOM_T: Record<string, { from: string; night: string; nights: string; see: string; book: string }> = {
+  it: { from: 'da', night: 'a notte', nights: 'notti', see: 'Vedi la camera', book: 'Prenota' },
+  en: { from: 'from', night: 'per night', nights: 'nights', see: 'See the room', book: 'Book' },
+  pl: { from: 'od', night: 'za noc', nights: 'noce', see: 'Zobacz pokój', book: 'Rezerwuj' },
+  de: { from: 'ab', night: 'pro Nacht', nights: 'Nächte', see: 'Zimmer ansehen', book: 'Buchen' },
+  fr: { from: 'dès', night: 'la nuit', nights: 'nuits', see: 'Voir la chambre', book: 'Réserver' },
+  es: { from: 'desde', night: 'por noche', nights: 'noches', see: 'Ver la habitación', book: 'Reservar' },
+};
+
+/** The rooms of a chat answer as small photo cards: one big photo and two small ones, name, beds, price. */
+function RoomCards({ rooms, locale, onAction }: { rooms: ChatRoom[]; locale: Locale; onAction?: () => void }) {
+  const x = ROOM_T[locale] ?? ROOM_T.it!;
+  return (
+    <motion.ul initial="h" animate="v" transition={{ staggerChildren: 0.08 }} className="mt-2 w-full max-w-[92%] space-y-2">
+      {rooms.map((r) => {
+        const pics = (r.photos?.length ? r.photos : r.photo ? [r.photo] : []).slice(0, 3);
+        const dated = r.nights > 0;
+        return (
+          <motion.li key={r.id} variants={POP}>
+            <Link href={r.href} onClick={onAction} className="group block overflow-hidden border border-line bg-white transition-[border-color,box-shadow] duration-300 hover:border-navy hover:shadow-[0_18px_40px_-30px_rgba(16,40,61,0.7)]">
+              {pics.length > 0 && (
+                <span className={cn('grid h-28 gap-0.5 bg-sand', pics.length >= 3 ? 'grid-cols-[2fr_1fr] grid-rows-2' : pics.length === 2 ? 'grid-cols-[2fr_1fr]' : 'grid-cols-1')}>
+                  {pics.map((src, i) => (
+                    <span key={src + i} className={cn('relative overflow-hidden', i === 0 && pics.length >= 3 && 'row-span-2')}>
+                      <Image src={src} alt={i === 0 ? r.name : ''} fill sizes={i === 0 ? '220px' : '110px'} className="object-cover transition-transform duration-700 group-hover:scale-105" />
+                    </span>
+                  ))}
+                </span>
+              )}
+              <span className="flex items-end gap-3 px-3 py-2.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[0.9rem] font-semibold text-navy">{r.name}</span>
+                  {r.beds && <span className="block truncate text-[0.72rem] text-mist">{r.beds}</span>}
+                </span>
+                <span className="shrink-0 text-right leading-tight">
+                  {dated ? (
+                    <>
+                      <span className="serif block text-[1.15rem] text-navy">{money(r.total, locale)}</span>
+                      <span className="block text-[0.66rem] text-mist">
+                        {money(r.avg, locale)} × {r.nights} {x.nights}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="block text-[0.6rem] font-semibold uppercase tracking-[0.14em] text-mist">{x.from}</span>
+                      <span className="serif block text-[1.15rem] text-navy">
+                        {money(r.from ?? r.avg, locale)} <span className="font-sans text-[0.66rem] text-mist">{x.night}</span>
+                      </span>
+                    </>
+                  )}
+                </span>
+              </span>
+              <span className="flex items-center justify-between border-t border-line px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-navy">
+                {dated ? x.book : x.see}
+                <ArrowRight className="h-3.5 w-3.5 text-gold-2 transition-transform duration-300 group-hover:translate-x-0.5" />
+              </span>
+            </Link>
+          </motion.li>
+        );
+      })}
+    </motion.ul>
   );
 }

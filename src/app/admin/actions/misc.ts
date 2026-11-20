@@ -7,6 +7,17 @@ import { audit } from '@/server/events';
 import { deliverEmail } from '@/server/events';
 import { clean } from '@/server/security';
 import { UserError } from '@/server/action';
+import { isPanelSection, sectionOf } from '@/lib/admin-sections';
+
+/** The owner opened a section of the menu: its notifications are seen (the red number next to it goes away). */
+export async function markSectionRead(section: string) {
+  return act('bookings.manage', () => {
+    if (!isPanelSection(section)) throw new UserError('Sezione sconosciuta.');
+    mutate((db) => db.notifications.forEach((n) => {
+      if (!n.read && sectionOf(n) === section) n.read = true;
+    }));
+  });
+}
 
 export async function markNotificationsRead() {
   return act('bookings.manage', () => mutate((db) => db.notifications.forEach((n) => (n.read = true))));

@@ -3,6 +3,7 @@ import type { Locale } from '@/lib/types';
 import { readDb } from '@/server/db/store';
 import { answerKB, buildSystemPrompt, detectLang, languageRule } from '@/server/chat/engine';
 import { answerStay, extractStay, isStayTurn } from '@/server/chat/stay';
+import { asksForRoom, guestsIn, roomsNamedIn, topRooms } from '@/server/chat/room-cards';
 import { getProvider } from '@/server/ai/provider';
 import { localize } from '@/server/assistant/extras';
 import { isLocale } from '@/lib/i18n/config';
@@ -31,6 +32,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * Public website chat. Streams NDJSON:
  * {t:'meta'} → {t:'status'}? → {t:'delta'}… → {t:'rooms'}? → {t:'actions'} → {t:'suggest'}? → {t:'done'}.
  * Public data only: the prompt never contains guests or bookings.
+ * The rooms a reply names (or, when the guest asks for a suggestion, the best ones) come as cards with photos.
  */
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return new Response('Forbidden', { status: 403 });
@@ -71,6 +73,12 @@ export async function POST(req: Request) {
         send({ t: 'done' });
         controller.close();
       };
+      // photos of the rooms the answer talks about; "which room do you suggest?" without a name → the best ones
+      const roomCards = (text: string) => {
+        const named = roomsNamedIn(db, text, lang);
+        const rooms = named.length ? named : asksForRoom(last) ? topRooms(db, lang, guestsIn(last)) : [];
+        if (rooms.length) send({ t: 'rooms', rooms });
+      };
 
       if (stayTurn) {
         send({ t: 'meta', mode: provider ? 'ai' : 'kb', lang });
@@ -101,7 +109,12 @@ export async function POST(req: Request) {
         send({ t: 'meta', mode: 'ai', lang });
         try {
           const messages = [{ role: 'system' as const, content: buildSystemPrompt(db, lang, today) }, ...parsed.data.messages.slice(-8).map((m) => ({ role: m.role, content: m.content.slice(0, 800) })), { role: 'system' as const, content: languageRule(lang) }];
-          for await (const chunk of provider.stream(messages, { maxTokens: 450, temperature: 0.3 })) send({ t: 'delta', text: chunk });
+          let full = '';
+          for await (const chunk of provider.stream(messages, { maxTokens: 450, temperature: 0.3 })) {
+            full += chunk;
+            send({ t: 'delta', text: chunk });
+          }
+          roomCards(full);
           if (kb.actions.length) send({ t: 'actions', actions: kb.actions });
           finish();
           return;
@@ -111,6 +124,7 @@ export async function POST(req: Request) {
       }
       send({ t: 'meta', mode: 'kb', lang });
       await pace(kb.text);
+      roomCards(kb.text);
       if (kb.actions.length) send({ t: 'actions', actions: kb.actions });
       finish();
     },
