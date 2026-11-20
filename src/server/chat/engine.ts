@@ -1,5 +1,6 @@
 import 'server-only';
 import { cancelText } from '@/lib/cancellation';
+import { chargeLaterRule } from '@/lib/charge-later';
 import type { DB, Locale } from '@/lib/types';
 import { isPubliclyBookable, searchAvailability } from '@/lib/availability';
 import { addDays, fmtDate } from '@/lib/dates';
@@ -211,7 +212,8 @@ export function answerKB(db: DB, message: string, lang: Locale, today: string): 
 function payInfo(db: DB): string[] {
   const p = db.settings.payments;
   const card = cardPaymentsReady(db) && p.allowOnline !== false;
-  const due = p.mode === 'full' ? 'tutto il soggiorno al momento della prenotazione' : p.mode === 'deposit_percent' ? `un acconto del ${p.depositPercent}% alla prenotazione, il resto in hotel` : `un acconto di € ${p.depositFixed} alla prenotazione, il resto in hotel`;
+  const later = chargeLaterRule(p);
+  const due = later.enabled ? `la carta si salva alla prenotazione senza pagare nulla; tutto il soggiorno viene addebitato sulla carta ${later.daysBefore === 1 ? 'il giorno prima' : `${later.daysBefore} giorni prima`} dell’arrivo (se l’arrivo è più vicino, si paga subito)` : p.mode === 'full' ? 'tutto il soggiorno al momento della prenotazione' : p.mode === 'deposit_percent' ? `un acconto del ${p.depositPercent}% alla prenotazione, il resto in hotel` : `un acconto di € ${p.depositFixed} alla prenotazione, il resto in hotel`;
   const tax = db.settings.pricing?.touristTax;
   const md = (x: string) => `${Number(x.slice(3))}/${Number(x.slice(0, 2))}`;
   return [

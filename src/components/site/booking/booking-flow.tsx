@@ -21,7 +21,8 @@ import { GuestSelector } from './guests';
 import { queryToParams, type StayQuery } from './query';
 import { ChooseRoom } from './choose-room';
 import { openLegal } from '../legal-dialog';
-import { createReservation, payAtHotel, sendCashCode, simulatePayment, startCashGuarantee, startStripeCheckout } from '@/app/[locale]/prenotazione/actions';
+import { createReservation, payAtHotel, sendCashCode, simulatePayment, startCardLater, startCashGuarantee, startStripeCheckout } from '@/app/[locale]/prenotazione/actions';
+import { LATER_T, laterFill } from '@/lib/charge-later';
 import { CASH_T } from '@/lib/i18n/cash-dict';
 import { CARE_T } from '@/lib/i18n/care-dict';
 
@@ -34,8 +35,9 @@ const TIMES_T: Record<Locale, { range: string; from: string; by: string }> = {
   fr: { range: 'de {a} à {b}', from: 'à partir de {a}', by: 'jusqu’à {t}' },
   es: { range: 'de {a} a {b}', from: 'desde las {a}', by: 'hasta las {t}' },
 };
-type QuoteResponse = { available: boolean; reason: 'capacity' | 'occupied' | null; quote: StayQuote; dueNow: number; promoValid: boolean; promoRequested: boolean; cashPercent?: number; touristTax?: TaxQuote | null };
-type Hold = { bookingId: string; token: string; code: string; dueNow: number; total: number; holdExpiresAt: string };
+type QuoteResponse = { available: boolean; reason: 'capacity' | 'occupied' | null; quote: StayQuote; dueNow: number; promoValid: boolean; promoRequested: boolean; cashPercent?: number; touristTax?: TaxQuote | null; chargeOn?: string | null };
+/** chargeOn: "pay later", the card is saved now and charged that day (nothing to pay now) */
+type Hold = { bookingId: string; token: string; code: string; dueNow: number; total: number; holdExpiresAt: string; chargeOn?: string | null };
 type Payments = { mode: 'full' | 'deposit_percent' | 'deposit_fixed'; depositPercent: number; depositFixed: number; cancellationPolicy: string; holdMinutes: number; freeCancellationDays: number; cancellationFee?: { type: 'percent' | 'first_night' | 'fixed'; value: number } };
 
 const EASE = [0.22, 0.61, 0.12, 1] as const;
@@ -286,13 +288,29 @@ export function BookingFlow({
     });
   };
 
+  // "pay later": the secure page only saves the card; back on the confirmation page the booking is confirmed
+  const payLater = () => {
+    if (!hold) return;
+    startTransition(async () => {
+      const r = await startCardLater(hold.token, locale);
+      if (r.ok) return window.location.assign(r.url);
+      // the arrival is now too close to wait: the whole stay is paid now
+      if (r.error === 'now') setHold({ ...hold, chargeOn: null, dueNow: hold.total });
+      else setMessage(r.error);
+    });
+  };
+
   const pay = (outcome: 'success' | 'failure') => {
     if (!hold) return;
     startTransition(async () => {
       if (provider === 'stripe') {
         const r = await startStripeCheckout(hold.token, locale);
         if (r.ok && r.url) window.location.assign(r.url);
-        else setMessage(r.ok ? 'Stripe' : r.error);
+        else if (!r.ok && r.error === 'later') {
+          const l = await startCardLater(hold.token, locale);
+          if (l.ok) window.location.assign(l.url);
+          else setMessage(l.error);
+        } else setMessage(r.ok ? 'Stripe' : r.error);
         return;
       }
       const r = await simulatePayment(hold.token, outcome);
@@ -448,7 +466,7 @@ export function BookingFlow({
 
                 <p className="label mt-8">{t.booking.pay.method}</p>
                 <div role="radiogroup" aria-label={t.booking.pay.method} className={cn('grid gap-3', canCash && canCard && 'sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2')}>
-                  {canCard && <MethodOption active={method === 'card'} onSelect={() => setMethod('card')} icon={CreditCard} title={t.booking.pay.card} note={t.booking.pay.cardNote} price={money(hold.total, locale, 2)} />}
+                  {canCard && <MethodOption active={method === 'card'} onSelect={() => setMethod('card')} icon={CreditCard} title={t.booking.pay.card} note={t.booking.pay.cardNote} price={money(hold.total, locale, 2)} badge={hold.chargeOn ? LATER_T[locale].today : undefined} />}
                   {canCash && (
                     <MethodOption
                       active={method === 'cash'}
@@ -470,7 +488,11 @@ export function BookingFlow({
                         <div>
                           <p className="eyebrow text-mist">{t.booking.dueNow}</p>
                           <p className="serif mt-1 text-[2.6rem] leading-none text-navy">{money(hold.dueNow, locale, 2)}</p>
-                          {hold.total - hold.dueNow > 0 && (
+                          {hold.chargeOn ? (
+                            <p className="mt-2 text-sm text-navy" data-testid="charge-later">
+                              {LATER_T[locale].row}: <strong className="font-semibold">{laterFill(LATER_T[locale].when, money(hold.total, locale, 2), fmtDate(hold.chargeOn, locale, { day: 'numeric', month: 'long' }))}</strong>
+                            </p>
+                          ) : hold.total - hold.dueNow > 0 && (
                             <p className="mt-2 text-xs text-mist">
                               {t.booking.dueLater}: {money(hold.total - hold.dueNow, locale, 2)}
                             </p>
@@ -479,10 +501,17 @@ export function BookingFlow({
                             <ShieldCheck className="h-4 w-4" /> {t.booking.pay.secure}
                           </p>
                         </div>
-                        <CardVisual name={`${form.firstName} ${form.lastName}`.trim()} amount={money(hold.dueNow, locale, 2)} simulated={provider === 'simulated'} />
+                        <CardVisual name={`${form.firstName} ${form.lastName}`.trim()} amount={money(hold.chargeOn ? hold.total : hold.dueNow, locale, 2)} simulated={provider === 'simulated'} />
                       </div>
                       <div className="border-t border-line p-6 md:p-8">
-                        {provider === 'stripe' && stripeKey ? (
+                        {provider === 'stripe' && hold.chargeOn ? (
+                          <>
+                            <button type="button" onClick={payLater} disabled={pending} className="btn btn-navy w-full" data-testid="pay-later">
+                              <Lock className="h-4 w-4" /> {pending ? t.booking.processing : laterFill(LATER_T[locale].button, '', fmtDate(hold.chargeOn, locale, { day: 'numeric', month: 'long' }))}
+                            </button>
+                            <p className="mt-3 text-xs leading-relaxed text-mist">{laterFill(LATER_T[locale].note, money(hold.total, locale, 2), fmtDate(hold.chargeOn, locale, { day: 'numeric', month: 'long' }))}</p>
+                          </>
+                        ) : provider === 'stripe' && stripeKey ? (
                           <EmbeddedPay pk={stripeKey} token={hold.token} locale={locale} onError={setMessage} />
                         ) : provider === 'stripe' ? (
                           <>
@@ -641,6 +670,7 @@ function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput
   const total = hold?.total ?? q?.total ?? null;
   const cashTotal = total !== null && cashPercent > 0 ? Math.round(total * (1 - cashPercent / 100) * 100) / 100 : null;
   const dueNow = hold?.dueNow ?? quote?.dueNow ?? null;
+  const chargeOn = hold ? (hold.chargeOn ?? null) : (quote?.chargeOn ?? null);
   const showCash = method === 'cash' && cashTotal !== null;
   return (
     <div className="overflow-clip rounded-[1.75rem] border border-line bg-white md:sticky md:top-28">
@@ -762,7 +792,14 @@ function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput
               <span>{t.booking.dueNow}</span>
               <span>{money(dueNow, locale, 2)}</span>
             </p>
-            {total - dueNow > 0 && (
+            {chargeOn ? (
+              <p className="flex justify-between gap-3 text-mist" data-testid="summary-charge-later">
+                <span>
+                  {LATER_T[locale].row} · {fmtDate(chargeOn, locale, { day: 'numeric', month: 'short' })}
+                </span>
+                <span>{money(total - dueNow, locale, 2)}</span>
+              </p>
+            ) : total - dueNow > 0 && (
               <p className="flex justify-between text-mist">
                 <span>{t.booking.dueLater}</span>
                 <span>{money(total - dueNow, locale, 2)}</span>

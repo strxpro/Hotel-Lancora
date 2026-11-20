@@ -6,6 +6,7 @@ import type { RoomOption } from '@/server/admin-data';
 import type { ActionResult } from '@/server/action';
 import { addDays, diffDays, fmtDate, fmtDateTime, todayISO } from '@/lib/dates';
 import { cn, money, notti, ospiti } from '@/lib/utils';
+import { itOn } from '@/lib/charge-later';
 import { Badge, Button, Dialog, Field, Toggle, useAction, useToast } from './ui';
 import { NiceSelect } from './nice-select';
 import {
@@ -241,6 +242,13 @@ function CardBox({ row, care, onDone }: { row: Row; care: Care; onDone: () => vo
           <span className="text-xs text-mist">{care.paymentMethod === 'cash' ? 'Paga in contanti, nessuna carta a garanzia' : 'Nessuna carta salvata'}</span>
         )}
       </div>
+      {care.later && (
+        <p className={cn('mt-3 rounded-xl px-3 py-2 text-[0.8rem]', care.later.failed ? 'bg-terracotta/10 text-terracotta' : 'bg-sand-2/60 text-navy')} data-testid="care-charge-later">
+          {care.later.failed
+            ? `Paga dopo: addebito di ${eur(care.later.amount)} non riuscito (${care.later.failed}).`
+            : `Paga dopo: ${eur(care.later.amount)} sulla carta ${itOn(fmtDate(care.later.on, 'it', { day: 'numeric', month: 'long' }))}${care.later.auto ? ', in automatico' : ', quando premi “Addebita ora” in Pagamenti'}.`}
+        </p>
+      )}
       {open && care.cardsOn && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {care.card && care.canMoney && (

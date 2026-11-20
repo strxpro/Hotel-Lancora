@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, animate, motion, useInView } from 'motion/react';
 import { ArrowUpRight, Banknote, BadgeCheck, CalendarClock, Check, ChevronDown, CreditCard, FlaskConical, Landmark, Link2, Loader2, Minus, Plus, RefreshCw, ShieldCheck, Unplug, Wallet } from 'lucide-react';
 import { cancelFeeAmount, cancelText } from '@/lib/cancellation';
+import { DEFAULT_CHARGE_LATER } from '@/lib/charge-later';
 import { cn, money } from '@/lib/utils';
 import { Dialog, useAction, useToast } from './ui';
 import { NiceSelect } from './nice-select';
@@ -274,11 +275,11 @@ export function AccountCard({ c, mode, demo = true, platformOk = true, support =
 
 /* ---------------- how guests pay (saved by itself) ---------------- */
 
-type Pay = { mode: 'full' | 'deposit_percent' | 'deposit_fixed'; depositPercent: number; depositFixed: number; freeCancellationDays: number; cancellationPolicy: string; refundPolicy: string; holdMinutes: number; cashDiscountPercent: number; allowCashAtHotel: boolean; allowOnline?: boolean; cardGuarantee?: boolean; cancellationFee?: { type: 'percent' | 'first_night' | 'fixed'; value: number } };
+type Pay = { mode: 'full' | 'deposit_percent' | 'deposit_fixed'; depositPercent: number; depositFixed: number; freeCancellationDays: number; cancellationPolicy: string; refundPolicy: string; holdMinutes: number; cashDiscountPercent: number; allowCashAtHotel: boolean; allowOnline?: boolean; cardGuarantee?: boolean; cancellationFee?: { type: 'percent' | 'first_night' | 'fixed'; value: number }; chargeLater?: { enabled: boolean; daysBefore: number; auto: boolean } };
 
 export function GuestPayments({ initial, cardsOn = false }: { initial: Pay; cardsOn?: boolean }) {
   const toast = useToast();
-  const [f, setF] = useState({ ...initial, allowOnline: initial.allowOnline ?? true, cardGuarantee: initial.cardGuarantee ?? false, cancellationFee: initial.cancellationFee ?? { type: 'percent' as const, value: 100 } });
+  const [f, setF] = useState({ ...initial, allowOnline: initial.allowOnline ?? true, cardGuarantee: initial.cardGuarantee ?? false, cancellationFee: initial.cancellationFee ?? { type: 'percent' as const, value: 100 }, chargeLater: { ...DEFAULT_CHARGE_LATER, ...initial.chargeLater } });
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [more, setMore] = useState(false);
   // "Percentuale…" chosen: show the slider even when it lands on 50% or 100%
@@ -318,7 +319,8 @@ export function GuestPayments({ initial, cardsOn = false }: { initial: Pay; card
   const rules = { freeCancellationDays: f.freeCancellationDays, cancellationFee: f.cancellationFee };
   const sentence = cancelText('it', rules);
   const example = 300;
-  const now = f.mode === 'full' ? example : f.mode === 'deposit_percent' ? Math.round(example * f.depositPercent) / 100 : Math.min(example, f.depositFixed);
+  const later = f.chargeLater;
+  const now = later.enabled ? 0 : f.mode === 'full' ? example : f.mode === 'deposit_percent' ? Math.round(example * f.depositPercent) / 100 : Math.min(example, f.depositFixed);
 
   return (
     <motion.section initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.7, ease: EASE }} className="rounded-[2rem] border border-line bg-white p-6 md:p-8">
@@ -374,13 +376,35 @@ export function GuestPayments({ initial, cardsOn = false }: { initial: Pay; card
                     ['deposit_fixed', 'Acconto fisso'],
                   ] as const
                 ).map(([v, l]) => (
-                  <Chip key={v} on={f.mode === v} onClick={() => setF({ ...f, mode: v })}>
+                  <Chip key={v} on={!later.enabled && f.mode === v} onClick={() => setF({ ...f, mode: v, chargeLater: { ...later, enabled: false } })}>
                     {l}
                   </Chip>
                 ))}
+                <Chip on={later.enabled} onClick={() => setF({ ...f, chargeLater: { ...later, enabled: true } })}>
+                  Più tardi
+                </Chip>
               </div>
-              {f.mode === 'deposit_percent' && <Slider value={f.depositPercent} min={10} max={100} step={5} suffix="%" onChange={(v) => setF({ ...f, depositPercent: v })} />}
-              {f.mode === 'deposit_fixed' && <Stepper value={f.depositFixed} min={10} max={2000} step={10} unit="€" onChange={(v) => setF({ ...f, depositFixed: v })} />}
+              <AnimatePresence initial={false}>
+                {later.enabled && (
+                  <motion.div key="later" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.35, ease: EASE }} className="overflow-hidden" data-testid="charge-later-settings">
+                    <p className="mt-5 flex items-center gap-2 text-sm font-semibold text-navy">
+                      <CalendarClock className="h-4 w-4 text-gold-2" /> Addebito sulla carta
+                    </p>
+                    <Stepper value={later.daysBefore} min={1} max={30} step={1} unit={later.daysBefore === 1 ? 'giorno prima dell’arrivo' : 'giorni prima dell’arrivo'} onChange={(v) => setF({ ...f, chargeLater: { ...later, daysBefore: v } })} />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Chip on={later.auto} onClick={() => setF({ ...f, chargeLater: { ...later, auto: true } })}>
+                        In automatico
+                      </Chip>
+                      <Chip on={!later.auto} onClick={() => setF({ ...f, chargeLater: { ...later, auto: false } })}>
+                        Solo quando clicco io
+                      </Chip>
+                    </div>
+                    {!cardsOn && <p className="mt-2 text-[0.75rem] text-mist">Funziona quando i pagamenti con carta sono attivi.</p>}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              {!later.enabled && f.mode === 'deposit_percent' && <Slider value={f.depositPercent} min={10} max={100} step={5} suffix="%" onChange={(v) => setF({ ...f, depositPercent: v })} />}
+              {!later.enabled && f.mode === 'deposit_fixed' && <Stepper value={f.depositFixed} min={10} max={2000} step={10} unit="€" onChange={(v) => setF({ ...f, depositFixed: v })} />}
               <p className="mt-4 text-[0.78rem] text-mist">
                 Su un soggiorno da {money(example)}: subito{' '}
                 <AnimatePresence mode="wait" initial={false}>
@@ -388,7 +412,11 @@ export function GuestPayments({ initial, cardsOn = false }: { initial: Pay; card
                     {money(now)}
                   </motion.strong>
                 </AnimatePresence>
-                {now < example ? `, il resto (${money(example - now)}) all’arrivo.` : '.'}
+                {later.enabled
+                  ? `; ${money(example)} sulla carta ${later.daysBefore === 1 ? 'il giorno prima' : `${later.daysBefore} giorni prima`} dell’arrivo, ${later.auto ? 'in automatico' : 'quando premi “Addebita ora”'}. Se l’arrivo è più vicino, paga tutto subito.`
+                  : now < example
+                    ? `, il resto (${money(example - now)}) all’arrivo.`
+                    : '.'}
               </p>
             </motion.div>
           )}
@@ -462,7 +490,7 @@ export function GuestPayments({ initial, cardsOn = false }: { initial: Pay; card
         <p className="mt-3 text-[0.78rem] text-mist">
           Esempio, {money(example)} per 3 notti: chi cancella dopo il termine paga{' '}
           <strong className="text-navy">{money(cancelFeeAmount(rules, example, 3), 'it', 2)}</strong>
-          {f.mode !== 'full' || !f.allowOnline ? ' (trattenuti da quanto ha già versato; se ha versato meno, non riceve rimborso)' : ` e riceve indietro ${money(Math.max(0, example - cancelFeeAmount(rules, example, 3)), 'it', 2)}`}.
+          {f.mode !== 'full' || !f.allowOnline || later.enabled ? ' (trattenuti da quanto ha già versato; se ha versato meno, non riceve rimborso)' : ` e riceve indietro ${money(Math.max(0, example - cancelFeeAmount(rules, example, 3)), 'it', 2)}`}.
         </p>
         <AnimatePresence mode="wait" initial={false}>
           <motion.p key={sentence} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.3 }} className="mt-4 rounded-xl bg-white px-4 py-3 text-[0.82rem] leading-relaxed text-charcoal/85 ring-1 ring-line">

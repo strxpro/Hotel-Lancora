@@ -7,13 +7,13 @@ import { mutate, readDb } from '@/server/db/store';
 import { queueEmail, smtpConfigured } from '@/server/events';
 import { CASH_COOKIE, CASH_PER_DAY, codeFor, codeMatches, maskEmail, readCashCookie, recentCashBookings, writeCashCookie } from '@/server/email-code';
 import { roomPayment } from '@/lib/cash';
-import { amountDueNow } from '@/lib/availability';
 import { cardPaymentsReady, createCheckoutSession, payoutDestination, publishableKey, simulationAllowed, stripeMode } from '@/server/payments/stripe';
 import { startCardCheckout } from '@/server/payments/card';
 import { clean, ipOf, rateLimit, requestOrigin } from '@/server/security';
 import { isLocale, localePath } from '@/lib/i18n/config';
 import { activeExtras, extrasForReception } from '@/lib/extras';
-import { diffDays } from '@/lib/dates';
+import { diffDays, todayISO } from '@/lib/dates';
+import { cardDueNow, laterChargeDay } from '@/lib/charge-later';
 
 const Input = z.object({
   roomId: z.string().min(1).max(64),
@@ -37,7 +37,7 @@ const Input = z.object({
 });
 
 export type ReservationResult =
-  | { ok: true; bookingId: string; token: string; code: string; dueNow: number; total: number; holdExpiresAt: string; payment: 'stripe' | 'simulated' }
+  | { ok: true; bookingId: string; token: string; code: string; dueNow: number; total: number; holdExpiresAt: string; payment: 'stripe' | 'simulated'; chargeOn: string | null }
   | { ok: false; error: string; code?: string };
 
 /** The guest's request plus the line of the ticked extras, priced here from the hotel's own list. */
@@ -46,6 +46,16 @@ function withExtras(text: string, ids: string[] | undefined, checkIn: string, ch
   const chosen = activeExtras(readDb().settings.pricing?.extras).filter((e) => ids.includes(e.id));
   const line = extrasForReception(chosen, diffDays(checkIn, checkOut), guests);
   return [text, line].filter(Boolean).join('\n\n');
+}
+
+/** Card payments really usable on the site now ("pay later" needs them to save the card). */
+const cardsLive = (): boolean => stripeMode() !== 'off' && cardPaymentsReady(readDb());
+
+/** What a card guest pays now and, with "pay later", the day the card is charged. */
+function cardPlan(b: { total: number; checkIn: string }) {
+  const p = readDb().settings.payments;
+  const today = todayISO();
+  return { dueNow: cardDueNow(b.total, p, b.checkIn, today, cardsLive()), chargeOn: laterChargeDay(p, b.checkIn, today, cardsLive()) };
 }
 
 async function ip(): Promise<string> {
@@ -61,7 +71,7 @@ export async function createReservation(raw: unknown): Promise<ReservationResult
   // the portals' calendars of this room, read again right now: a night sold there minutes ago is not sold twice
   await import('@/server/channels/ical').then((m) => m.refreshRoomCalendars(d.roomId)).catch(() => null);
   try {
-    const { booking, dueNow } = createWebsiteHold({
+    const { booking } = createWebsiteHold({
       roomId: d.roomId,
       checkIn: d.checkIn,
       checkOut: d.checkOut,
@@ -74,7 +84,8 @@ export async function createReservation(raw: unknown): Promise<ReservationResult
       promoCode: d.promoCode ? clean(d.promoCode, 30) : null,
     });
     revalidatePath('/admin', 'layout');
-    return { ok: true, bookingId: booking.id, token: booking.token, code: booking.code, dueNow, total: booking.total, holdExpiresAt: booking.holdExpiresAt!, payment: stripeMode() === 'off' ? 'simulated' : 'stripe' };
+    const plan = cardPlan(booking);
+    return { ok: true, bookingId: booking.id, token: booking.token, code: booking.code, dueNow: plan.dueNow, chargeOn: plan.chargeOn, total: booking.total, holdExpiresAt: booking.holdExpiresAt!, payment: stripeMode() === 'off' ? 'simulated' : 'stripe' };
   } catch (e) {
     if (e instanceof BookingError) return { ok: false, error: e.message, code: e.code };
     console.error(e);
@@ -109,10 +120,13 @@ export async function startStripeCheckout(token: string, locale: string, embedde
     const base = await requestOrigin();
     const useEmbedded = embedded && Boolean(publishableKey());
     const photo = room?.photos[0]?.src;
+    const plan = cardPlan(b);
+    // "pay later": the card is saved on its own page (startCardLater), nothing is charged now
+    if (plan.chargeOn) return { ok: false, error: 'later' };
     const session = await createCheckoutSession({
       bookingId: b.id,
       code: b.code,
-      amount: amountDueNow(b.total, db.settings.payments),
+      amount: plan.dueNow,
       description: `${room?.name ?? 'Camera'} · ${b.checkIn} → ${b.checkOut}`,
       email: b.guest.email,
       // Stripe fills in the session id: the confirmation page uses it to check the payment by itself
@@ -218,6 +232,34 @@ export async function startCashGuarantee(token: string, locale: string): Promise
   }
 }
 
+/**
+ * "Pay later" (Pagamenti → Più tardi): the secure page where the guest saves the card. Nothing is
+ * charged now; back on the confirmation page the booking is confirmed and the card is charged N days
+ * before arrival (server/payments/charge-later.ts).
+ */
+export async function startCardLater(token: string, locale: string): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  try {
+    if (!rateLimit(`later:${await ip()}`, 10, 10 * 60_000)) return { ok: false, error: 'Troppi tentativi.' };
+    if (!cardsLive()) return { ok: false, error: 'Il pagamento online sarà attivo a breve: per ora puoi scegliere il pagamento in hotel.' };
+    const b = pendingBooking(token);
+    if (!payOptions(b.roomId).card) return { ok: false, error: 'Per questa camera il pagamento online non è attivo: si paga in hotel.' };
+    // the arrival got closer meanwhile: the guest pays now, on the usual page
+    if (!cardPlan(b).chargeOn) return { ok: false, error: 'now' };
+    const l = isLocale(locale) ? locale : 'it';
+    const base = await requestOrigin();
+    const url = await startCardCheckout(b, {
+      purpose: 'pay_later',
+      amount: 0,
+      successUrl: `${base}${localePath(l, `/prenotazione/conferma?t=${b.token}`)}&g={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${base}${localePath(l, `/prenotazione?ripresa=${b.token}`)}`,
+      locale: l,
+    });
+    return { ok: true, url };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** Demo-only payment simulation (never available when Stripe is configured). */
 export async function simulatePayment(token: string, outcome: 'success' | 'failure'): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
@@ -231,7 +273,7 @@ export async function simulatePayment(token: string, outcome: 'success' | 'failu
       return { ok: false, error: 'failed' };
     }
     const db = readDb();
-    confirmPayment(b.id, { amount: amountDueNow(b.total, db.settings.payments), provider: 'simulazione', reference: `SIM-${b.code}` });
+    confirmPayment(b.id, { amount: cardDueNow(b.total, db.settings.payments, b.checkIn, todayISO(), false), provider: 'simulazione', reference: `SIM-${b.code}` });
     revalidatePath('/', 'layout');
     return { ok: true };
   } catch (e) {

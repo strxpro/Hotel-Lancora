@@ -192,3 +192,13 @@ export async function setAutoInstantAction(on: boolean) {
     });
   }, on ? 'Acceso: ogni pagamento con carta arriverà subito sulla carta.' : 'Spento: i soldi arrivano con il bonifico normale.');
 }
+
+/** "Paga dopo" → "Addebita ora": charges the saved card of the booking now, whatever day it is. */
+export async function chargePlannedAction(bookingId: string) {
+  return act('payments.manage', async (u) => {
+    const { chargePlanned } = await import('@/server/payments/charge-later');
+    const r = await chargePlanned(z.string().min(1).max(80).parse(bookingId), u.name);
+    if (!r.ok) throw new UserError(`Addebito non riuscito: ${r.reason}.`);
+    return { amount: r.amount };
+  });
+}

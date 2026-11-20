@@ -126,7 +126,7 @@ function ratePeriodRow(p: RatePeriod): Row {
 }
 
 function bookingRow(b: Booking, now: Date): Row {
-  const { id, code, token, roomId, guest, adults, children, childrenAges, checkIn, checkOut, total, discount, promoCode, amountPaid, status, holdExpiresAt, source, otaRef, specialRequests, notes, consents, createdAt, updatedAt, cancelledAt, simulated, demo, paymentMethod, reviewRequestedAt, card, cardRequest, noShow, changeRequest, ...rest } = b;
+  const { id, code, token, roomId, guest, adults, children, childrenAges, checkIn, checkOut, total, discount, promoCode, amountPaid, status, holdExpiresAt, source, otaRef, specialRequests, notes, consents, createdAt, updatedAt, cancelledAt, simulated, demo, paymentMethod, reviewRequestedAt, card, cardRequest, noShow, changeRequest, chargePlan, ...rest } = b;
   all(rest);
   const { firstName, lastName, email, phone, country, lang, ...guestRest } = guest;
   all(guestRest);
@@ -143,7 +143,8 @@ function bookingRow(b: Booking, now: Date): Row {
     consent_privacy: privacy, consent_terms: terms, consent_marketing: marketing,
     payment_method: paymentMethod ?? null, review_requested_at: ts(reviewRequestedAt), simulated, is_demo: demo,
     created_at: createdAt, updated_at: updatedAt, cancelled_at: ts(cancelledAt),
-    card: card ?? null, card_request: cardRequest ?? null, no_show: noShow ?? null, change_request: changeRequest ?? null,
+    // "pay later" travels inside the card column (no column of its own): tables-read.ts splits it again
+    card: card || chargePlan ? { ...(card ?? {}), ...(chargePlan ? { chargePlan } : {}) } : null, card_request: cardRequest ?? null, no_show: noShow ?? null, change_request: changeRequest ?? null,
   };
 }
 

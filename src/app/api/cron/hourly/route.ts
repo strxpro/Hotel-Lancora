@@ -13,7 +13,7 @@ export const maxDuration = 120;
 
 /**
  * Every hour, the upkeep the server used to do when it started:
- * review requests, Stripe's notifications to this address, the bot's webhook on this address,
+ * review requests, the "pay later" charges, Stripe's notifications to this address, the bot's webhook on this address,
  * and the copy of the data in the real tables (when the table export is on).
  */
 export async function GET(req: Request) {
@@ -23,6 +23,8 @@ export async function GET(req: Request) {
   await settleAppUrl();
   return runJobs({
     reviews: () => sendReviewRequests(),
+    // "Paga dopo": the cards whose day has come (Pagamenti → Più tardi)
+    charges: async () => (await import('@/server/payments/charge-later')).runPlannedCharges(),
     stripe: async () => {
       const linked = (await ensureStripeWebhook()) ? 'collegato' : 'invariato';
       // the hotel's own account activated on Stripe meanwhile: card payments switch on by themselves

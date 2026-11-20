@@ -7,6 +7,9 @@ import { addDays, fmtDate, startOfMonth, todayISO } from '@/lib/dates';
 import { Badge, PageHeader } from '@/components/admin/ui';
 import { AccountCard, GuestPayments, MoneyHero } from '@/components/admin/payments-simple';
 import { PaymentsLedger } from '@/components/admin/payments-ledger';
+import { PendingCharges } from '@/components/admin/pending-charges';
+import { pendingCharges } from '@/server/payments/charge-later';
+import { chargeLaterRule } from '@/lib/charge-later';
 
 export const metadata = { title: 'Pagamenti' };
 
@@ -79,6 +82,8 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
           }}
         />
       </div>
+      {/* "paga dopo": the cards to charge before arrival, with the button to charge now */}
+      <PendingCharges rows={pendingCharges()} today={today} enabled={chargeLaterRule(db.settings.payments).enabled} cardsOn={stripeMode() !== 'off'} />
       <div className="mt-4">
         <GuestPayments initial={db.settings.payments} cardsOn={stripeMode() !== 'off'} />
       </div>

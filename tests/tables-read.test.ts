@@ -22,6 +22,10 @@ function richDb(): DB {
   const b = db.bookings[0]!;
   Object.assign(b.guest, { country: 'PL', lang: 'pl' });
   Object.assign(b, { paymentMethod: 'card', reviewRequestedAt: T, childrenAges: [4, 7], children: 2 });
+  // the card and the "pay later" plan share the card column
+  b.card = { customer: 'cus_1', paymentMethod: 'pm_1', brand: 'visa', last4: '4242', exp: '12/30', mode: 'test', savedAt: T };
+  b.chargePlan = { since: T, outcome: 'failed', at: T, reason: 'fondi insufficienti sulla carta' };
+  db.bookings[1]!.chargePlan = { since: T, outcome: null, at: null, reason: null };
   db.feedback.unshift({ id: 'fb-rich', bookingId: b.id, roomId: room.id, photos: ['/api/media/a.jpg'], translations: { en: 'Great' }, replies: [{ id: 'rep-1', author: 'hotel', name: 'Hotel', text: 'Grazie!', lang: 'it', createdAt: T }, { id: 'rep-2', author: 'guest', name: 'Anna', email: 'anna@example.com', text: 'A presto', lang: 'it', translations: { en: 'See you' }, createdAt: T }], verified: true, pending: false, editedAt: T, name: 'Anna K.', rating: 5, comment: 'Ottimo', lang: 'it', publishConsent: true, showOnSite: true, demo: false, createdAt: new Date(NOW.getTime() + 1000).toISOString() });
   db.telegram = { linkedChats: [{ chatId: '42', userId: user, name: '@owner', linkedAt: T }], linkCode: { code: '123456', userId: user, expiresAt: T }, lastTestAt: T, lastError: T };
   db.pendingActions.push({ id: 'pa-1', channel: 'telegram', chatId: '42', userId: user, tool: 'block_room', args: { room: '101', nights: 2 }, summary: 'Bloccare la 101?', createdAt: T, expiresAt: T, lang: 'pl' });

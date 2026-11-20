@@ -64,6 +64,13 @@ function ratePeriodOf(r: Row): RatePeriod {
   return { id: str(r.id), label: str(r.label), from: str(r.date_from), to: str(r.date_to), roomIds: r.room_ids == null ? 'all' : (r.room_ids as string[]), mode: r.mode as RatePeriod['mode'], value: num(r.value), createdAt: iso(r.created_at), ...(r.cash_price != null ? { cash: num(r.cash_price) } : {}) };
 }
 
+/** The card column also carries the "pay later" plan (tables.ts): back to the two fields. */
+function cardAndPlan(v: unknown): Pick<Booking, 'card' | 'chargePlan'> {
+  if (!v || typeof v !== 'object') return {};
+  const { chargePlan, ...card } = v as Record<string, unknown>;
+  return { ...(Object.keys(card).length ? { card: card as unknown as NonNullable<Booking['card']> } : {}), ...(chargePlan ? { chargePlan: chargePlan as NonNullable<Booking['chargePlan']> } : {}) };
+}
+
 function bookingOf(r: Row): Booking {
   return {
     id: str(r.id), code: str(r.code), token: str(r.token), roomId: strN(r.room_id),
@@ -75,7 +82,7 @@ function bookingOf(r: Row): Booking {
     createdAt: iso(r.created_at), updatedAt: iso(r.updated_at), cancelledAt: isoN(r.cancelled_at), simulated: bool(r.simulated), demo: bool(r.is_demo),
     ...opt<'paymentMethod', NonNullable<Booking['paymentMethod']>>('paymentMethod', r.payment_method),
     reviewRequestedAt: isoN(r.review_requested_at),
-    ...opt<'card', NonNullable<Booking['card']>>('card', r.card), ...opt<'cardRequest', NonNullable<Booking['cardRequest']>>('cardRequest', r.card_request),
+    ...cardAndPlan(r.card), ...opt<'cardRequest', NonNullable<Booking['cardRequest']>>('cardRequest', r.card_request),
     ...opt<'noShow', NonNullable<Booking['noShow']>>('noShow', r.no_show), ...opt<'changeRequest', NonNullable<Booking['changeRequest']>>('changeRequest', r.change_request),
   };
 }

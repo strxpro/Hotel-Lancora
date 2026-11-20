@@ -7,7 +7,8 @@ import { cancelText, cancelTitle } from '@/lib/cancellation';
 import { isLocale, fill, plural } from '@/lib/i18n/config';
 import { getDictionary } from '@/lib/i18n/dictionaries';
 import type { Locale } from '@/lib/types';
-import { diffDays, fmtDateLong } from '@/lib/dates';
+import { diffDays, fmtDate, fmtDateLong } from '@/lib/dates';
+import { chargeDay, chargeLaterRule, LATER_T, laterFill, plannedCharge } from '@/lib/charge-later';
 import { money } from '@/lib/utils';
 import { readDb } from '@/server/db/store';
 import { smtpConfigured } from '@/server/events';
@@ -41,6 +42,9 @@ export default async function ConfirmPage({ params, searchParams }: Props) {
   const r = db.rooms.find((x) => x.id === b.roomId);
   const room = r ? localizeRoom(r, locale) : null;
   const nights = diffDays(b.checkIn, b.checkOut);
+  // "pay later": the card is saved, the stay is charged N days before arrival
+  const laterAmount = plannedCharge(b);
+  const later = laterAmount > 0 ? { amount: laterAmount, on: fmtDate(chargeDay(b.checkIn, chargeLaterRule(db.settings.payments)), locale, { day: 'numeric', month: 'long' }) } : null;
   const L = (p: string) => (locale === 'it' ? p : `/${locale}${p}`);
 
   return (
@@ -73,8 +77,9 @@ export default async function ConfirmPage({ params, searchParams }: Props) {
                   {b.paymentMethod === 'cash' ? <Banknote className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />}
                 </span>
                 <span>
-                  <span className="eyebrow block text-mist">{b.paymentMethod === 'cash' ? t.booking.pay.cash : t.booking.pay.card}</span>
-                  <span className="serif mt-1 block text-[1.6rem] leading-none text-navy">{money(b.paymentMethod === 'cash' ? b.total : b.amountPaid, locale, 2)}</span>
+                  <span className="eyebrow block text-mist">{later ? LATER_T[locale].row : b.paymentMethod === 'cash' ? t.booking.pay.cash : t.booking.pay.card}</span>
+                  <span className="serif mt-1 block text-[1.6rem] leading-none text-navy">{money(later ? later.amount : b.paymentMethod === 'cash' ? b.total : b.amountPaid, locale, 2)}</span>
+                  {later && <span className="mt-1 block text-xs text-mist" data-testid="confirm-charge-later">{later.on}</span>}
                 </span>
               </div>
             )}
@@ -123,6 +128,7 @@ export default async function ConfirmPage({ params, searchParams }: Props) {
                 [t.booking.nights.other.replace('{n} ', ''), String(nights)],
                 [t.booking.total, money(b.total, locale, 2)],
                 [t.guest.paid, money(b.amountPaid, locale, 2)],
+                ...(later ? [[LATER_T[locale].row, laterFill(LATER_T[locale].when, money(later.amount, locale, 2), later.on)]] : []),
                 ...((tax) => (tax ? [[TAX_T[locale].label, `${money(tax.total, locale, 2)} · ${taxNote(locale, tax.cash)} (${taxDetail(locale, tax, (n) => money(n, locale, 2))})`]] : []))(b.status === 'cancelled' ? null : touristTaxFor(db.settings.pricing?.touristTax, b.checkIn, b.checkOut, b.adults)),
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-6 py-4">

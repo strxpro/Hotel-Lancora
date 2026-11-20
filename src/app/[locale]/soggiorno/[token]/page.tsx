@@ -14,7 +14,8 @@ import { cardPaymentsReady } from '@/server/payments/stripe';
 import { fill, isLocale, plural } from '@/lib/i18n/config';
 import { getDictionary } from '@/lib/i18n/dictionaries';
 import type { Locale } from '@/lib/types';
-import { addDays, diffDays, eachNight, fmtDateLong, todayISO } from '@/lib/dates';
+import { addDays, diffDays, eachNight, fmtDate, fmtDateLong, todayISO } from '@/lib/dates';
+import { chargeDay, chargeLaterRule, LATER_T, laterFill, plannedCharge } from '@/lib/charge-later';
 import { money } from '@/lib/utils';
 import { readDb } from '@/server/db/store';
 import { findBookingByToken } from '@/server/bookings';
@@ -87,7 +88,9 @@ export default async function GuestPage({ params, searchParams }: { params: Prom
                 [t.search.guests, plural(locale, b.adults + b.children, t.search.guestsCount)],
                 [t.guest.status, `${statusLabel} · ${plural(locale, nights, t.booking.nights)}`],
                 [t.guest.paid, money(b.amountPaid, locale, 2)],
-                [t.guest.toPay, money(Math.max(0, b.total - b.amountPaid), locale, 2)],
+                plannedCharge(b) > 0
+                  ? [LATER_T[locale].row, laterFill(LATER_T[locale].when, money(plannedCharge(b), locale, 2), fmtDate(chargeDay(b.checkIn, chargeLaterRule(db.settings.payments)), locale, { day: 'numeric', month: 'long' }))]
+                  : [t.guest.toPay, money(Math.max(0, b.total - b.amountPaid), locale, 2)],
               ].map(([k, v]) => (
                 <div key={k} className="bg-white p-5">
                   <dt className="label">{k}</dt>

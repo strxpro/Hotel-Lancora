@@ -92,13 +92,15 @@ export async function savePaymentsAction(raw: unknown) {
         allowCashAtHotel: z.boolean(),
         allowOnline: z.boolean().default(true),
         cardGuarantee: z.boolean().default(false),
+        chargeLater: z.object({ enabled: z.boolean(), daysBefore: z.number().int().min(1).max(30), auto: z.boolean() }).optional(),
       })
       .refine((v) => v.allowOnline || v.allowCashAtHotel, 'Scegli almeno un modo di pagare.')
       .refine((v) => v.cancellationFee.type !== 'percent' || v.cancellationFee.value <= 100, 'La penale in percentuale non può superare il 100%.')
       .parse(raw);
     mutate((db) => {
-      db.settings.payments = p;
-      audit(db, u.name, 'settings', 'payments', null, `Modalità ${p.mode}`);
+      // "Paga dopo" kept when an older screen sends the conditions without it
+      db.settings.payments = { ...p, ...(p.chargeLater ?? db.settings.payments.chargeLater ? { chargeLater: p.chargeLater ?? db.settings.payments.chargeLater } : {}) };
+      audit(db, u.name, 'settings', 'payments', null, p.chargeLater?.enabled ? `Paga dopo: addebito ${p.chargeLater.daysBefore} giorni prima dell’arrivo${p.chargeLater.auto ? ', in automatico' : ', a mano'}` : `Modalità ${p.mode}`);
     });
   }, 'Condizioni di pagamento salvate.');
 }

@@ -4,6 +4,7 @@ import { titleWithoutNumber } from '@/lib/room-number';
 import { money } from '@/lib/utils';
 import { cancelText } from '@/lib/cancellation';
 import { TAX_T, taxDetail, taxNote, touristTaxFor } from '@/lib/tourist-tax';
+import { chargeDay, chargeLaterRule, LATER_T, laterFill, plannedCharge } from '@/lib/charge-later';
 import { guestLang, isLocaleCode } from '@/lib/guest-lang';
 
 export interface EmailContext {
@@ -198,6 +199,8 @@ function summary(b: Booking, room: Room | null, settings: Settings, lang: Locale
     [s.total, money(b.total, lang, 2)],
     [s.paid, money(b.amountPaid, lang, 2)],
   ];
+  // "pay later": what is charged on the saved card, and when
+  if (plannedCharge(b) > 0) rows.push([LATER_T[lang].row, laterFill(LATER_T[lang].when, money(plannedCharge(b), lang, 2), fmtDateLong(chargeDay(b.checkIn, chargeLaterRule(settings.payments)), lang))]);
   const tax = b.status === 'cancelled' ? null : touristTaxFor(settings.pricing?.touristTax, b.checkIn, b.checkOut, b.adults);
   if (tax) rows.push([TAX_T[lang].label, `${money(tax.total, lang, 2)} · ${taxNote(lang, tax.cash)} (${taxDetail(lang, tax, (n) => money(n, lang, 2))})`]);
   return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 6px;border-top:1px solid #E7D9C1;">${rows

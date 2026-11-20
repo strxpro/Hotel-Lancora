@@ -7,6 +7,7 @@ import { afterCommit, mutate, newId, newToken, readDb } from './db/store';
 import { audit, guestName, notify, queueEmail } from './events';
 import { notti, ospiti } from '@/lib/utils';
 import { onlinePeriods, onlineRoom } from '@/lib/online-price';
+import { chargeDay, chargeLaterRule, itOn } from '@/lib/charge-later';
 
 export class BookingError extends Error {
   constructor(message: string, public code: 'invalid' | 'conflict' | 'not_found' | 'expired' | 'capacity' = 'invalid') {
@@ -178,6 +179,37 @@ export function confirmPayAtHotel(bookingId: string): { booking: Booking; saved:
     notify(db, 'nuova_prenotazione', `Nuova prenotazione dal sito · ${b.code}`, `${guestName(b)} · camera ${room?.number ?? '—'} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} · paga in contanti all’arrivo € ${b.total.toFixed(2)}`, `/admin/prenotazioni?id=${b.id}`);
     audit(db, 'Sito web', 'pay_at_hotel', 'booking', b.id, `${b.code} · contanti in struttura € ${b.total.toFixed(2)}`);
     return { booking: b, saved };
+  });
+}
+
+/**
+ * "Paga dopo": the guest saved the card on the secure page and pays nothing now. The booking is
+ * confirmed as a card booking with a charge plan; the card is charged N days before arrival
+ * (payments/charge-later.ts).
+ */
+export function confirmCardLater(bookingId: string): Booking {
+  return mutate((db) => {
+    const b = db.bookings.find((x) => x.id === bookingId);
+    if (!b) throw new BookingError('Prenotazione non trovata.', 'not_found');
+    if (b.status === 'confirmed' && b.chargePlan) return b;
+    if (b.status !== 'pending_payment') throw new BookingError('La prenotazione temporanea è scaduta.', 'expired');
+    if (!isBookingActive(b) && b.roomId && roomConflicts(db, b.roomId, b.checkIn, b.checkOut, { ignoreBookingId: b.id }).length) {
+      throw new BookingError('La prenotazione temporanea è scaduta.', 'expired');
+    }
+    const now = new Date().toISOString();
+    const rule = chargeLaterRule(db.settings.payments);
+    const on = chargeDay(b.checkIn, rule);
+    b.paymentMethod = 'card';
+    b.status = 'confirmed';
+    b.holdExpiresAt = null;
+    b.updatedAt = now;
+    b.chargePlan = { since: now, outcome: null, at: null, reason: null };
+    const room = db.rooms.find((r) => r.id === b.roomId) ?? null;
+    const when = on > todayISO() ? itOn(fmtDate(on)) : 'oggi';
+    queueEmail(db, 'conferma', b.guest.email, { booking: b, room });
+    notify(db, 'nuova_prenotazione', `Nuova prenotazione dal sito · ${b.code}`, `${guestName(b)} · camera ${room?.number ?? '—'} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} · carta salvata, € ${b.total.toFixed(2)} da addebitare ${when}${rule.auto ? '' : ' (quando premi “Addebita”)'}`, `/admin/pagamenti`);
+    audit(db, 'Sito web', 'pay_later', 'booking', b.id, `${b.code} · carta salvata · € ${b.total.toFixed(2)} da addebitare ${when}`);
+    return b;
   });
 }
 

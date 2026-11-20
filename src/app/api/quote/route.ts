@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { readDb } from '@/server/db/store';
-import { amountDueNow, findPromo, isPubliclyBookable, quoteStay, roomConflicts, stayCashPercent } from '@/lib/availability';
+import { findPromo, isPubliclyBookable, quoteStay, roomConflicts, stayCashPercent } from '@/lib/availability';
 import { roomPayment } from '@/lib/cash';
 import { touristTaxFor } from '@/lib/tourist-tax';
 import { onlinePeriods, onlineRoom } from '@/lib/online-price';
 import { diffDays, isValidISODate, todayISO } from '@/lib/dates';
 import { ipOf, rateLimit } from '@/server/security';
+import { cardDueNow, laterChargeDay } from '@/lib/charge-later';
+import { cardPaymentsReady, stripeMode } from '@/server/payments/stripe';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +39,7 @@ export async function GET(req: Request) {
       quote,
       promoValid: Boolean(quote.promo),
       promoRequested: Boolean(sp.get('promo')),
-      dueNow: amountDueNow(quote.total, db.settings.payments),
+      ...((cards) => ({ dueNow: cardDueNow(quote.total, db.settings.payments, checkIn, todayISO(), cards), chargeOn: laterChargeDay(db.settings.payments, checkIn, todayISO(), cards) }))(stripeMode() !== 'off' && cardPaymentsReady(db)),
       // cash discount of these nights (the hotel's own cash prices of the season, when set)
       cashPercent: roomPayment(room, db.settings.payments).cash ? stayCashPercent(priced, checkIn, checkOut, periods, db.settings.payments) : 0,
       // the town's tax, paid at the hotel (not in the total)

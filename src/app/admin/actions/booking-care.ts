@@ -26,6 +26,7 @@ import { stripeMode } from '@/server/payments/stripe';
 import { clean } from '@/server/security';
 import { translateForGuest } from '@/server/ai/content';
 import { guestLang } from '@/server/guests';
+import { chargeDay, chargeLaterRule, plannedCharge } from '@/lib/charge-later';
 
 const Id = z.string().min(1).max(80);
 
@@ -57,6 +58,8 @@ export async function bookingCareAction(bookingId: string) {
       thread: threadOf(db, id),
       card: b.card ? { label: cardLabel(b.card), brand: b.card.brand, last4: b.card.last4, exp: b.card.exp, usable: cardsAvailable() && b.card.mode === mode, test: b.card.mode === 'test' } : null,
       cardRequest: b.cardRequest ?? null,
+      // "paga dopo": what the card will be charged before arrival, and when
+      later: plannedCharge(b) > 0 ? ((r) => ({ amount: plannedCharge(b), on: chargeDay(b.checkIn, r), auto: r.auto, failed: b.chargePlan?.outcome === 'failed' ? (b.chargePlan.reason ?? 'la carta non ha pagato') : null }))(chargeLaterRule(db.settings.payments)) : null,
       noShow: b.noShow ?? null,
       changeRequest: b.changeRequest ? { ...b.changeRequest, roomNumber: db.rooms.find((r) => r.id === b.changeRequest!.roomId)?.number ?? null } : null,
       cancel: cancelPreview(db, b),

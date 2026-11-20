@@ -118,6 +118,23 @@ export interface Booking {
   noShow?: NoShow | null;
   /** new dates proposed by the hotel or asked by the guest, or a free cancellation asked by the guest */
   changeRequest?: ChangeRequest | null;
+  /** booked with "pay later": the card is charged N days before arrival (lib/charge-later.ts) */
+  chargePlan?: ChargePlan | null;
+}
+
+/**
+ * "Paga dopo": nothing was charged at booking, the stay is charged on the saved card N days before
+ * arrival (N and automatic / by hand come from Pagamenti, so the owner can change them later).
+ */
+export interface ChargePlan {
+  /** when the guest saved the card */
+  since: string;
+  /** charged = paid; failed = the bank refused (the owner was told, the guest asked for a new card) */
+  outcome: 'charged' | 'failed' | null;
+  /** last attempt */
+  at: string | null;
+  /** the bank's answer in plain words, when it failed */
+  reason: string | null;
 }
 
 export interface SavedCard {
@@ -358,6 +375,8 @@ export interface Settings {
     allowOnline?: boolean;
     /** guests who pay cash at the hotel leave a card as a guarantee (nothing is charged) */
     cardGuarantee?: boolean;
+    /** "Paga dopo": card guests save the card and are charged N days before arrival (lib/charge-later.ts) */
+    chargeLater?: { enabled: boolean; daysBefore: number; auto: boolean };
   };
   /** tariff rules the owner can change in Prezzi */
   pricing?: {

@@ -3,7 +3,7 @@ import type Stripe from 'stripe';
 import type { Booking, Payment, SavedCard } from '@/lib/types';
 import { roomConflicts, round2 } from '@/lib/availability';
 import { fmtDate } from '@/lib/dates';
-import { BookingError, cancelBooking, confirmPayAtHotel } from '../bookings';
+import { BookingError, cancelBooking, confirmCardLater, confirmPayAtHotel } from '../bookings';
 import { mutate, newId, readDb } from '../db/store';
 import { audit, guestName, notify } from '../events';
 import { payoutDestination, platformFee, stripe, stripeMode } from './stripe';
@@ -19,7 +19,7 @@ import { payoutDestination, platformFee, stripe, stripeMode } from './stripe';
  * Only ids, brand, last 4 digits and expiry are stored: never the card number.
  */
 
-export type CardPurpose = 'guarantee' | 'card_update' | 'cancel_fee';
+export type CardPurpose = 'guarantee' | 'card_update' | 'cancel_fee' | 'pay_later';
 
 export const cardsAvailable = (): boolean => stripeMode() !== 'off';
 const provider = (): Payment['provider'] => (stripeMode() === 'live' ? 'stripe' : 'stripe_test');
@@ -71,11 +71,12 @@ export async function completeCardSession(sessionId: string, bookingId?: string)
       if (!si || si.status !== 'succeeded') return 'unpaid';
       const card = cardOf(si.payment_method as Stripe.PaymentMethod, si.customer as string | null);
       if (card) keepCard(id, card, 'Ospite');
-      if (purpose === 'guarantee') {
+      if (purpose === 'guarantee' || purpose === 'pay_later') {
         const b = readDb().bookings.find((x) => x.id === id);
+        const confirm = purpose === 'guarantee' ? confirmPayAtHotel : confirmCardLater;
         // the guest took longer than the hold: the booking is given back if the room is still free
-        if (b?.status === 'cancelled' && !b.noShow && b.amountPaid === 0 && reopenExpiredHold(id)) confirmPayAtHotel(id);
-        else if (b?.status === 'pending_payment') confirmPayAtHotel(id);
+        if (b?.status === 'cancelled' && !b.noShow && b.amountPaid === 0 && reopenExpiredHold(id)) confirm(id);
+        else if (b?.status === 'pending_payment') confirm(id);
       }
       if (purpose === 'card_update') cardRequestDone(id, card, 0, null);
       return 'done';
@@ -134,6 +135,8 @@ function cardRequestDone(bookingId: string, card: SavedCard | null, paid: number
       db.payments.push({ id: newId('pay-'), bookingId: b.id, amount: round2(paid), kind: b.amountPaid + paid >= b.total ? 'balance' : 'deposit', provider: provider(), status: 'succeeded', reference, createdAt: now });
       b.amountPaid = round2(b.amountPaid + paid);
       if (b.noShow?.outcome === 'due') b.noShow = { ...b.noShow, outcome: 'charged' };
+      // a "pay later" charge the bank refused, paid now with the new card
+      if (b.chargePlan && b.chargePlan.outcome !== 'charged' && b.amountPaid + 0.004 >= b.total) b.chargePlan = { ...b.chargePlan, outcome: 'charged', at: now, reason: null };
     }
     const req = b.cardRequest;
     if (req && !req.outcome) {
@@ -188,18 +191,33 @@ export async function startCardCheckout(b: Booking, p: { purpose: CardPurpose; a
     client_reference_id: b.id,
     metadata: meta,
     allowed_payment_method_types: ['card'],
-    setup_intent_data: { metadata: meta, description: `${db.settings.hotel.name} · ${b.code} · carta a garanzia`, ...(destination ? { on_behalf_of: destination } : {}) },
+    setup_intent_data: { metadata: meta, description: `${db.settings.hotel.name} · ${b.code} · ${p.purpose === 'pay_later' ? 'carta per l’addebito prima dell’arrivo' : 'carta a garanzia'}`, ...(destination ? { on_behalf_of: destination } : {}) },
     locale,
-    // the guarantee page closes with the booking's hold (Stripe: at least 30 minutes)
-    ...(p.purpose === 'guarantee' ? { expires_at: Math.floor(Date.now() / 1000) + Math.max(30, db.settings.payments.holdMinutes) * 60 } : {}),
+    // the guarantee / pay-later page closes with the booking's hold (Stripe: at least 30 minutes)
+    ...(p.purpose === 'guarantee' || p.purpose === 'pay_later' ? { expires_at: Math.floor(Date.now() / 1000) + Math.max(30, db.settings.payments.holdMinutes) * 60 } : {}),
   });
   if (!session.url) throw new BookingError('Pagina della carta non disponibile.');
   return session.url;
 }
 
+/**
+ * The card or the bank said no (a new card can help). Anything else — a key without permissions, a
+ * wrong key, Stripe not answering — is the site's side: asking the guest for a new card would not help.
+ */
+function cardRefused(e: unknown): boolean {
+  const err = e as { type?: string; rawType?: string; code?: string } | null;
+  if (!err) return true;
+  if (err.type === 'StripeCardError' || err.rawType === 'card_error') return true;
+  // our own answer for a payment Stripe did not complete (no error type)
+  return !err.type && (err.code === 'authentication_required' || err.code === 'card_declined');
+}
+
 /** The bank's answer, in words the owner understands. */
 function declineReason(e: unknown): string {
-  const err = e as { code?: string; decline_code?: string; message?: string };
+  const err = e as { code?: string; decline_code?: string; message?: string; type?: string };
+  if (err?.type === 'StripePermissionError') return 'la chiave di Stripe collegata al sito non ha il permesso di addebitare: ricollega Stripe con una chiave ad accesso completo';
+  if (err?.type === 'StripeAuthenticationError') return 'la chiave di Stripe collegata al sito non è valida: ricollega Stripe';
+  if (err?.type === 'StripeConnectionError' || err?.type === 'StripeAPIError' || err?.type === 'StripeRateLimitError') return 'Stripe non ha risposto: riprova tra qualche minuto';
   const code = err.decline_code ?? err.code ?? '';
   if (code === 'authentication_required') return 'la banca vuole che sia l’ospite ad approvare il pagamento';
   if (code === 'expired_card') return 'la carta è scaduta';
@@ -260,12 +278,13 @@ export async function chargeSavedCard(bookingId: string, amount: number, actor: 
       d.payments.push({ id: newId('pay-'), bookingId: x.id, amount: value, kind: 'balance', provider: provider(), status: 'failed', reference: ref, createdAt: now });
       audit(d, actor, 'charge_failed', 'booking', x.id, `${x.code} · addebito € ${value.toFixed(2)} (${why}) non riuscito: ${reason}`);
     });
-    return { ok: false, reason, declined: true };
+    return { ok: false, reason, declined: cardRefused(failure) };
   }
   const paymentId = newId('pay-');
   mutate((d) => {
     const x = d.bookings.find((k) => k.id === b.id);
-    if (!x) return;
+    // two clicks (or the panel and the hourly job) at the same moment get the same Stripe payment: recorded once
+    if (!x || d.payments.some((p) => p.reference === pi!.id && p.status === 'succeeded')) return;
     d.payments.push({ id: paymentId, bookingId: x.id, amount: value, kind: x.amountPaid + value >= x.total ? 'balance' : 'deposit', provider: provider(), status: 'succeeded', reference: pi!.id, createdAt: now });
     x.amountPaid = round2(x.amountPaid + value);
     x.updatedAt = now;
