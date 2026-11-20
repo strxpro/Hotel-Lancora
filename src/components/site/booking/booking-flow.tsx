@@ -21,7 +21,8 @@ import { GuestSelector } from './guests';
 import { queryToParams, type StayQuery } from './query';
 import { ChooseRoom } from './choose-room';
 import { openLegal } from '../legal-dialog';
-import { createReservation, payAtHotel, simulatePayment, startCashGuarantee, startStripeCheckout } from '@/app/[locale]/prenotazione/actions';
+import { createReservation, payAtHotel, sendCashCode, simulatePayment, startCashGuarantee, startStripeCheckout } from '@/app/[locale]/prenotazione/actions';
+import { CASH_T } from '@/lib/i18n/cash-dict';
 import { CARE_T } from '@/lib/i18n/care-dict';
 
 export type StayTimes = { checkInFrom: string; checkInTo: string; checkOutBy: string; /** "Da sapere" (pets, smoking…) in the guest's language */ rules?: { icon: string; text: string; ok: boolean }[] };
@@ -238,17 +239,50 @@ export function BookingFlow({
   // the season's own cash prices of these nights, when the hotel set them
   const cashPct = canCash ? (quote?.cashPercent ?? room?.cashPercent ?? cash.percent) : 0;
   const cashTotal = hold ? Math.round(hold.total * (1 - cashPct / 100) * 100) / 100 : 0;
+  // pay at the hotel: a code goes to the guest's e-mail first (nobody can book in someone else's name)
+  const [cashCode, setCashCode] = useState<{ sentTo: string; at: number } | null>(null);
+  const [codeInput, setCodeInput] = useState('');
+  const [cashErr, setCashErr] = useState<'wrong' | 'already' | 'tooMany' | null>(null);
+  const ct = CASH_T[locale];
+  const cashError = (e: string) => {
+    if (e === 'code') setCashErr('wrong');
+    else if (e === 'already') setCashErr('already');
+    else if (e === 'too_many') setCashErr('tooMany');
+    else setMessage(e);
+  };
+  const finishCash = async (code: string) => {
+    if (!hold) return;
+    const r = await payAtHotel(hold.token, code);
+    if (r.ok) router.push(href(`/prenotazione/conferma?t=${hold.token}`));
+    else if (r.error === 'guarantee') {
+      // the card as a guarantee, on the secure page: back on the confirmation page
+      const g = await startCashGuarantee(hold.token, locale);
+      if (g.ok) window.location.assign(g.url);
+      else setMessage(g.error);
+    } else cashError(r.error);
+  };
   const confirmCash = () => {
     if (!hold) return;
+    setCashErr(null);
     startTransition(async () => {
-      const r = await payAtHotel(hold.token);
-      if (r.ok) router.push(href(`/prenotazione/conferma?t=${hold.token}`));
-      else if (r.error === 'guarantee') {
-        // the card as a guarantee, on the secure page: back on the confirmation page
-        const g = await startCashGuarantee(hold.token, locale);
-        if (g.ok) window.location.assign(g.url);
-        else setMessage(g.error);
-      } else setMessage(r.error);
+      if (cashCode) return finishCash(codeInput);
+      const s = await sendCashCode(hold.token, locale);
+      if (!s.ok) {
+        if (s.error === 'guarantee') return finishCash('');
+        return cashError(s.error);
+      }
+      // no e-mail service on this site: confirmed as before
+      if (s.skip) return finishCash('');
+      setCashCode({ sentTo: s.sentTo ?? '', at: Date.now() });
+    });
+  };
+  const resendCash = () => {
+    if (!hold) return;
+    setCashErr(null);
+    startTransition(async () => {
+      const s = await sendCashCode(hold.token, locale);
+      if (s.ok) setCashCode({ sentTo: s.sentTo ?? cashCode?.sentTo ?? '', at: Date.now() });
+      else cashError(s.error);
     });
   };
 
@@ -493,9 +527,60 @@ export function BookingFlow({
                         </div>
                       </div>
                       <div className="border-t border-line p-6 md:p-8">
-                        <button type="button" onClick={confirmCash} disabled={pending} className="btn btn-navy w-full">
-                          <Check className="h-4 w-4" /> {pending ? t.booking.processing : cash.guarantee ? CARE_T[locale].guaranteeButton : t.booking.pay.confirmCash}
-                        </button>
+                        {cashErr === 'already' ? (
+                          <div className="rounded-2xl border border-gold/50 bg-ivory p-4" role="alert">
+                            <p className="flex items-start gap-2.5 text-sm leading-relaxed text-navy">
+                              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-gold-2" /> {ct.already}
+                            </p>
+                            <a href={href('/area-ospite')} className="btn btn-navy mt-4 w-full">
+                              {ct.area}
+                            </a>
+                          </div>
+                        ) : cashCode ? (
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              confirmCash();
+                            }}
+                          >
+                            <p className="text-sm leading-relaxed text-navy">{fill(ct.sent, { email: cashCode.sentTo })}</p>
+                            <label className="mt-4 block">
+                              <span className="label">{ct.label}</span>
+                              <input
+                                className="field otp text-center font-semibold tracking-[0.5em]"
+                                style={{ fontSize: '1.6rem' }}
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                pattern="[0-9]*"
+                                maxLength={6}
+                                autoFocus
+                                value={codeInput}
+                                aria-invalid={cashErr === 'wrong'}
+                                onChange={(e) => {
+                                  setCashErr(null);
+                                  setCodeInput(e.target.value.replace(/\D/g, '').slice(0, 6));
+                                }}
+                              />
+                            </label>
+                            {cashErr && <p className="mt-2 text-sm text-terracotta">{cashErr === 'wrong' ? ct.wrong : ct.tooMany}</p>}
+                            <button type="submit" disabled={pending || codeInput.length < 6} className="btn btn-navy mt-4 w-full">
+                              <Check className="h-4 w-4" /> {pending ? t.booking.processing : ct.confirm}
+                            </button>
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-mist">
+                              <span>{ct.why}</span>
+                              <button type="button" disabled={pending} onClick={resendCash} className="link-u font-semibold text-navy">
+                                {ct.resend}
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <>
+                            <button type="button" onClick={confirmCash} disabled={pending} className="btn btn-navy w-full">
+                              <Check className="h-4 w-4" /> {pending ? t.booking.processing : cash.guarantee ? CARE_T[locale].guaranteeButton : t.booking.pay.confirmCash}
+                            </button>
+                            {cashErr === 'tooMany' && <p className="mt-2 text-sm text-terracotta">{ct.tooMany}</p>}
+                          </>
+                        )}
                       </div>
                     </motion.div>
                   )}

@@ -61,6 +61,10 @@ export function RoomsSection({
   const [filters, setFilters] = useState<Filters>(EMPTY);
   const [sort, setSort] = useState<Sort>('recommended');
   const [view, setView] = useState<View>('grid');
+  // phones start with the slim strips (photo on the left, name and price on the right): more rooms on one screen
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 767px)').matches) setView('list');
+  }, []);
   const [shown, setShown] = useState(PAGE);
   const [panel, setPanel] = useState(false);
   const popRef = useRef<HTMLDivElement>(null);
@@ -291,7 +295,7 @@ export function RoomsSection({
                   {(['grid', 'masonry', 'list'] as View[]).map((v) => {
                     const label = v === 'list' ? VIEW_LIST[locale] : t.rooms.f[v];
                     return (
-                      <button key={v} type="button" role="radio" aria-checked={view === v} aria-label={label} title={label} onClick={() => setView(v)} className={cn('relative z-[1] flex w-10 items-center justify-center rounded-full transition-colors', view === v ? 'text-ivory' : 'text-mist hover:text-navy')}>
+                      <button key={v} type="button" role="radio" aria-checked={view === v} aria-label={label} title={label} onClick={() => setView(v)} className={cn('relative z-[1] w-10 items-center justify-center rounded-full transition-colors', v === 'masonry' ? 'hidden sm:flex' : 'flex', view === v ? 'text-ivory' : 'text-mist hover:text-navy')}>
                         {view === v && <motion.span layoutId="view-pill" className="absolute inset-0 -z-[1] rounded-full bg-navy" transition={{ type: 'spring', stiffness: 420, damping: 36 }} />}
                         {v === 'grid' ? <LayoutGrid className="h-4 w-4" /> : v === 'masonry' ? <Columns2 className="h-4 w-4" /> : <Rows3 className="h-4 w-4" />}
                       </button>
@@ -305,7 +309,7 @@ export function RoomsSection({
         )}
 
         {view === 'list' ? (
-          <div key={`list-${sort}`} className="mt-8 flex flex-col gap-5 md:gap-6">
+          <div key={`list-${sort}`} className="mt-6 flex flex-col gap-3 sm:gap-5 md:mt-8 md:gap-6">
             <AnimatePresence mode="popLayout" initial={false}>{visible.map((r, i) => card(r, i))}</AnimatePresence>
           </div>
         ) : view === 'grid' ? (

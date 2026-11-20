@@ -118,7 +118,8 @@ export function ImageReveal({ children, className, direction = 'up', parallax = 
       const from = direction === 'up' ? `inset(22% 8% 0% 8% round ${r})` : direction === 'left' ? `inset(8% 30% 8% 0% round ${r})` : `inset(8% 0% 8% 30% round ${r})`;
       gsap.fromTo(el, { clipPath: from, opacity: 0.001 }, { clipPath: `inset(0% 0% 0% 0% round ${r})`, opacity: 1, duration: 1.6, delay, ease: 'expo.out', scrollTrigger: { trigger: el, start: 'top 88%', once: true } });
       gsap.fromTo(img, { scale: 1.28 }, { scale: 1, duration: 2.1, delay, ease: 'expo.out', scrollTrigger: { trigger: el, start: 'top 88%', once: true } });
-      if (parallax) {
+      // the scrubbed parallax only with a mouse: on phones it costs frames while scrolling
+      if (parallax && !window.matchMedia('(hover: none), (pointer: coarse)').matches) {
         gsap.fromTo(img, { yPercent: -parallax }, { yPercent: parallax, ease: 'none', scrollTrigger: { trigger: el, start: 'top bottom', end: 'bottom top', scrub: true } });
       }
     },

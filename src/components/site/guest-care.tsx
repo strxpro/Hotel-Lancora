@@ -2,10 +2,11 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
-import { CalendarRange, Check, CreditCard, Lock, MessageCircle, Send } from 'lucide-react';
+import { ArrowRight, CalendarRange, Check, CreditCard, Lock, MessageCircle, Send } from 'lucide-react';
 import { useI18n } from './providers';
 import { RangeCalendar } from './booking/calendar';
 import { CARE_T } from '@/lib/i18n/care-dict';
+import { STAY_T } from '@/lib/i18n/stay-dict';
 import { plural } from '@/lib/i18n/config';
 import { addDays, diffDays, fmtDate, fmtDateTime, todayISO } from '@/lib/dates';
 import { cn, money } from '@/lib/utils';
@@ -154,8 +155,23 @@ function DatesForm({ token, checkIn, checkOut, busy = [], onDone, onError }: { t
       </h2>
       <p className="mt-2 text-sm text-mist">{c.datesText}</p>
       {!open ? (
-        <button type="button" className="btn btn-line mt-5 text-navy" onClick={() => setOpen(true)}>
-          {c.askDates}
+        // the stay as it is now, and one big tap to pick other dates (the calendar shows which nights are free)
+        <button type="button" onClick={() => setOpen(true)} className="group mt-5 block w-full overflow-hidden rounded-2xl border border-line bg-white text-left transition-[border-color,box-shadow,transform] duration-300 hover:-translate-y-0.5 hover:border-navy hover:shadow-[0_24px_50px_-34px_rgba(16,40,61,0.6)]">
+          <span className="block px-4 pt-3 text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-gold-2">{STAY_T[locale].now}</span>
+          <span className="grid grid-cols-2">
+            {([[t.search.arrival, checkIn], [t.search.departure, checkOut]] as const).map(([l, d], i) => (
+              <span key={l} className={cn('block px-4 pb-3 pt-1.5', i === 1 && 'border-l border-line')}>
+                <span className="block text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-mist">{l}</span>
+                <span className="mt-0.5 block text-[0.95rem] font-semibold text-navy">{day(d)}</span>
+              </span>
+            ))}
+          </span>
+          <span className="flex items-center justify-between gap-3 bg-navy px-4 py-3.5 text-ivory">
+            <span className="flex items-center gap-2.5 text-sm font-semibold">
+              <CalendarRange className="h-4 w-4 text-gold" /> {STAY_T[locale].change}
+            </span>
+            <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+          </span>
         </button>
       ) : (
         <motion.form
@@ -225,6 +241,7 @@ function Conversation({ token, thread, hotelName, onError }: { token: string; th
       <h2 className="serif flex items-center gap-3 border-b border-line px-6 py-4 text-[1.6rem] text-navy">
         <MessageCircle className="h-5 w-5 text-gold-2" strokeWidth={1.4} /> {c.msgTitle}
       </h2>
+      <p className="border-b border-line bg-white px-6 py-2.5 text-xs text-mist">{STAY_T[locale].msgHint}</p>
       <div ref={box} className="max-h-96 space-y-3 overflow-y-auto bg-ivory/70 px-5 py-5">
         {thread.length === 0 && <p className="py-4 text-center text-sm text-mist">{c.msgEmpty}</p>}
         <AnimatePresence initial={false}>

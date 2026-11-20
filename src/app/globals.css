@@ -750,3 +750,12 @@ html[data-dock='1'] .float-label {
   section, article, .rounded-3xl, .rounded-\[2rem\] { break-inside: avoid; }
   [data-print-hide] { display: none !important; }
 }
+
+/* phones: a text field under 16px makes the browser zoom the page when it is tapped */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not(.otp),
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}

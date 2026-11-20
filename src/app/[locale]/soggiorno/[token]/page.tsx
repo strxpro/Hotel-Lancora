@@ -19,6 +19,7 @@ import { findBookingByToken } from '@/server/bookings';
 import { localizeRoom } from '@/server/rooms';
 import { FeedbackForm, GuestActions } from '@/components/site/guest-area';
 import { GuestCare } from '@/components/site/guest-care';
+import { ContactTiles } from '@/components/site/contact-tiles';
 import { threadOf } from '@/server/booking-care';
 import { completeCardSession } from '@/server/payments/card';
 import { isBookingActive, occupiedNights } from '@/lib/availability';
@@ -52,10 +53,12 @@ export default async function GuestPage({ params, searchParams }: { params: Prom
   const statusLabel = b.status === 'confirmed' ? `✓ ${ACCOUNT_T[locale].states.upcoming}` : b.status === 'cancelled' ? t.booking.cancelled : t.booking.pendingTitle;
   // signed in to the guest area with this booking's e-mail → a way back to the list
   const signedIn = readGuest((await cookies()).get(GUEST_COOKIE)?.value) === b.guest.email.trim().toLowerCase();
+  // the dates can still be changed: a confirmed stay that has not ended
+  const canChangeDates = b.status === 'confirmed' && isBookingActive(b) && b.checkOut > today && !stayed;
 
   return (
     <div className="bg-ivory pb-28 pt-32 md:pt-44">
-      <div className="container-x grid gap-14 lg:grid-cols-12">
+      <div className="container-x grid gap-10 md:gap-14 lg:grid-cols-12">
         <div className="lg:col-span-7">
           {signedIn && (
             <Link href={localePath(locale, '/area-ospite')} className="link-u mb-8 inline-flex items-center gap-2 text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-navy">
@@ -88,23 +91,17 @@ export default async function GuestPage({ params, searchParams }: { params: Prom
               ))}
             </dl>
           </div>
-          <div className="mt-10 text-sm leading-relaxed text-charcoal/80">
-            <p>
-              {h.name} · {h.addressVerified ? `${h.addressLine}, ${h.postalCode} ${h.city}` : `${h.postalCode} ${h.city} (${t.sections.addressPending})`}
-            </p>
-            <p className="mt-1">
-              {h.phone} · {h.email}
-            </p>
-            <a href={`https://www.google.com/maps/dir/?api=1&destination=${h.lat},${h.lng}`} target="_blank" rel="noopener noreferrer" className="link-u mt-3 inline-block text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-navy">
-              {t.sections.directions}
-            </a>
-          </div>
+          {/* one tap: change dates, write to the reception (the owner is told on Telegram), call, WhatsApp, directions */}
+          <ContactTiles className="mt-6" contact={{ phone: h.phone, whatsapp: h.whatsapp, email: h.email, lat: h.lat, lng: h.lng }} dates={canChangeDates} write />
+          <p className="mt-6 text-sm leading-relaxed text-charcoal/75">
+            {h.name} · {h.addressVerified ? `${h.addressLine}, ${h.postalCode} ${h.city}` : `${h.postalCode} ${h.city} (${t.sections.addressPending})`}
+          </p>
         </div>
         <div className="space-y-12 lg:col-span-5">
           {b.noShow && <p className="rounded-2xl border border-line bg-white px-4 py-3 text-sm text-charcoal/80">{CARE_T[locale].noShow}</p>}
           <GuestCare
             token={b.token}
-            active={b.status === 'confirmed' && isBookingActive(b) && b.checkOut > today && !stayed}
+            active={canChangeDates}
             checkIn={b.checkIn}
             checkOut={b.checkOut}
             total={b.total}

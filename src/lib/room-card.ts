@@ -12,6 +12,8 @@ export interface RoomCardData {
   size: number | null;
   floor: FloorKey;
   basePrice: number;
+  /** the lowest price of a night in the next 12 months (seasons included): "da 55 €" before any date */
+  fromPrice?: number;
   /** the owner's own cash price per night (null = global cash discount) */
   cashPrice: number | null;
   /** ways to pay this room on the site, already combined with the hotel setting */

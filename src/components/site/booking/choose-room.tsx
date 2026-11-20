@@ -200,32 +200,32 @@ export function ChooseRoom({
             const cash = pct > 0 ? Math.round(price(r) * (1 - pct / 100) * 100) / 100 : null;
             return (
               <motion.li key={r.room.id} layout initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.55, ease: EASE, delay: Math.min(i, 6) * 0.05 }}>
-                <article className={cn('relative grid overflow-hidden rounded-[1.6rem] border bg-white transition-[border-color,box-shadow] duration-500 sm:grid-cols-[minmax(0,0.95fr)_minmax(0,1.2fr)]', chosen ? 'border-navy shadow-[0_30px_70px_-40px_rgba(16,40,61,0.7)]' : 'border-line hover:shadow-[0_30px_70px_-50px_rgba(16,40,61,0.6)]')}>
+                <article className={cn('relative grid grid-cols-[36%_minmax(0,1fr)] overflow-hidden rounded-[1.4rem] border bg-white transition-[border-color,box-shadow] duration-500 sm:grid-cols-[minmax(0,0.95fr)_minmax(0,1.2fr)] sm:rounded-[1.6rem]', chosen ? 'border-navy shadow-[0_30px_70px_-40px_rgba(16,40,61,0.7)]' : 'border-line hover:shadow-[0_30px_70px_-50px_rgba(16,40,61,0.6)]')}>
                   <Gallery photos={r.room.photos.length ? r.room.photos : r.room.photo ? [r.room.photo] : []} name={r.room.name} />
-                  <div className="absolute left-3 top-3 z-[2] flex flex-wrap gap-1.5">
+                  <div className="absolute left-2 top-2 z-[2] flex max-w-[34%] flex-wrap gap-1 sm:left-3 sm:top-3 sm:max-w-none sm:gap-1.5">
                     {isTop && (
                       <span className="flex items-center gap-1 rounded-full bg-gold px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.1em] text-navy-3 shadow">
                         <Star className="h-3 w-3" fill="currentColor" /> {t.booking.pick.popular}
                       </span>
                     )}
-                    {isCheap && <span className="rounded-full bg-sage px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.1em] text-white shadow">{t.booking.pick.bestPrice}</span>}
+                    {isCheap && <span className="hidden rounded-full bg-sage sm:inline px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.1em] text-white shadow">{t.booking.pick.bestPrice}</span>}
                     {sea && (
-                      <span className="flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.1em] text-navy shadow">
+                      <span className="hidden items-center gap-1 rounded-full bg-white/90 sm:flex px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.1em] text-navy shadow">
                         <Waves className="h-3 w-3" /> {t.booking.pick.seaView}
                       </span>
                     )}
                   </div>
-                  <div className="flex flex-col p-5 md:p-6">
-                    <p className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-gold-2">
+                  <div className="flex min-w-0 flex-col p-3.5 sm:p-5 md:p-6">
+                    <p className="truncate text-[0.58rem] font-semibold uppercase tracking-[0.16em] text-gold-2 sm:text-[0.62rem] sm:tracking-[0.18em]">
                       {r.room.number ? `N° ${r.room.number} · ` : ''}{t.roomTypes[r.room.type]} · {t.floor[r.room.floor]}
                     </p>
-                    <h3 className="serif mt-1 text-[1.9rem] leading-tight text-navy">{r.room.name}</h3>
+                    <h3 className="serif mt-1 text-[1.3rem] leading-tight text-navy sm:text-[1.9rem]">{r.room.name}</h3>
                     {r.room.rating && (
                       <p className="mt-1 flex items-center gap-1.5 text-xs text-navy">
                         <Stars value={r.room.rating.avg} size="h-3.5 w-3.5" /> <b>{r.room.rating.avg.toFixed(1).replace('.', ',')}</b> <span className="text-mist">({r.room.rating.count})</span>
                       </p>
                     )}
-                    <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-mist">
+                    <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[0.72rem] text-mist sm:mt-2 sm:gap-x-4 sm:text-xs">
                       <span className="flex items-center gap-1.5">
                         <Users className="h-3.5 w-3.5" /> {plural(locale, r.room.maxGuests, t.rooms.upTo)}
                       </span>
@@ -238,26 +238,33 @@ export function ChooseRoom({
                         </span>
                       )}
                     </p>
-                    <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-charcoal/80">{r.room.short}</p>
-                    <ul className="mt-3 flex flex-wrap gap-1.5">
+                    <p className="mt-3 hidden text-sm leading-relaxed text-charcoal/80 sm:line-clamp-2">{r.room.short}</p>
+                    <ul className="mt-3 hidden flex-wrap gap-1.5 sm:flex">
                       {r.room.amenities.slice(0, 4).map((a) => (
                         <li key={a} className="flex items-center gap-1.5 rounded-full bg-ivory px-2.5 py-1 text-[0.7rem] text-charcoal/80">
                           <AmenityIcon name={a} className="h-3.5 w-3.5 text-gold-2" /> {amenityLabel(a, locale)}
                         </li>
                       ))}
                     </ul>
-                    <div className="mt-auto flex flex-wrap items-end justify-between gap-4 pt-5">
+                    <div className="mt-auto flex flex-wrap items-end justify-between gap-2.5 pt-3 sm:gap-4 sm:pt-5">
                       {hasDates ? (
-                        <div className="min-w-[13rem] flex-1">
+                        <div className="w-full min-w-0 flex-1 sm:w-auto sm:min-w-[13rem]">
                           <p className="text-[0.6rem] uppercase tracking-[0.16em] text-mist">
                             {plural(locale, r.nights, t.booking.nights)} · {t.booking.pick.stayTotal}
                           </p>
                           <PricePair className="mt-2 max-w-[22rem]" card={r.room.pay?.card === false ? null : price(r)} cash={cash ?? (r.room.pay?.card === false ? price(r) : null)} />
                         </div>
                       ) : (
-                        <p className="max-w-[16rem] text-xs leading-relaxed text-mist">{t.booking.pick.pickDates}</p>
+                        // no dates yet: the lowest night price, so the guest sees at once what a room costs
+                        <p className="min-w-0 leading-tight">
+                          <span className="block text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-mist">{t.rooms.from}</span>
+                          <span className="mt-0.5 flex items-baseline gap-1">
+                            <span className="serif text-[1.4rem] text-navy sm:text-[1.7rem]">{money(r.room.fromPrice ?? r.room.basePrice, locale)}</span>
+                            <span className="text-[0.72rem] text-mist">{t.rooms.perNight}</span>
+                          </span>
+                        </p>
                       )}
-                      <motion.button type="button" whileTap={{ scale: 0.95 }} onClick={() => pick(r.room.slug)} disabled={Boolean(picked)} className={cn('relative flex h-12 items-center gap-2 overflow-hidden rounded-full px-6 text-[0.72rem] font-semibold uppercase tracking-[0.16em] transition-colors', chosen ? 'bg-sage text-white' : 'bg-navy text-ivory hover:bg-navy-3')}>
+                      <motion.button type="button" whileTap={{ scale: 0.95 }} onClick={() => pick(r.room.slug)} disabled={Boolean(picked)} className={cn('relative flex h-10 w-full items-center justify-center gap-2 overflow-hidden rounded-full px-4 text-[0.66rem] font-semibold uppercase tracking-[0.14em] transition-colors sm:h-12 sm:w-auto sm:px-6 sm:text-[0.72rem] sm:tracking-[0.16em]', chosen ? 'bg-sage text-white' : 'bg-navy text-ivory hover:bg-navy-3')}>
                         <AnimatePresence mode="wait" initial={false}>
                           {chosen ? (
                             <motion.span key="ok" initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex items-center gap-2">
@@ -302,10 +309,10 @@ export function ChooseRoom({
 function Gallery({ photos, name }: { photos: { src: string; alt: string }[]; name: string }) {
   const [i, setI] = useState(0);
   const n = photos.length;
-  if (!n) return <div className="aspect-[4/3] bg-sand sm:aspect-auto" />;
+  if (!n) return <div className="h-full min-h-[10rem] bg-sand" />;
   const p = photos[i % n]!;
   return (
-    <div className="relative aspect-[4/3] overflow-hidden bg-sand sm:aspect-auto sm:min-h-[300px]">
+    <div className="relative h-full min-h-[10rem] overflow-hidden bg-sand sm:min-h-[300px]">
       <AnimatePresence initial={false}>
         <motion.div
           key={p.src}

@@ -9,6 +9,8 @@ let registered = false;
 if (typeof window !== 'undefined' && !registered) {
   gsap.registerPlugin(ScrollTrigger, Flip, SplitText, useGSAP);
   gsap.defaults({ ease: 'power3.out', duration: 1 });
+  // phones: the address bar showing / hiding is not a resize (no recalculation, no jump while scrolling)
+  ScrollTrigger.config({ ignoreMobileResize: true });
   registered = true;
 }
 

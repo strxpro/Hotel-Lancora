@@ -4,6 +4,7 @@ import { isLocale } from '@/lib/i18n/config';
 import { ACCOUNT_T } from '@/lib/i18n/account-dict';
 import type { Locale } from '@/lib/types';
 import { GUEST_COOKIE, guestOverview, readGuest } from '@/server/guest-access';
+import { readDb } from '@/server/db/store';
 import { GuestSignIn, GuestStays } from '@/components/site/account';
 
 export const dynamic = 'force-dynamic';
@@ -19,7 +20,7 @@ export default async function GuestAreaPage() {
   const view = email ? guestOverview(email) : null;
   return (
     <div className="min-h-[80svh] bg-ivory pb-28 pt-32 md:pt-44">
-      <div className="container-x">{view && email ? <GuestStays email={email} name={view.name} stays={view.stays} /> : <GuestSignIn />}</div>
+      <div className="container-x">{view && email ? <GuestStays email={email} name={view.name} stays={view.stays} contact={(({ phone, whatsapp, email: mail, lat, lng }) => ({ phone, whatsapp, email: mail, lat, lng }))(readDb().settings.hotel)} /> : <GuestSignIn />}</div>
     </div>
   );
 }

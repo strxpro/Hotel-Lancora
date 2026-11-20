@@ -12,6 +12,8 @@ import type { GuestStay } from '@/server/guest-access';
 import { askCode, checkCode, signOutGuest } from '@/app/[locale]/area-ospite/actions';
 import { useI18n } from './providers';
 import { TLink } from './transition';
+import { ContactTiles, type HotelContact } from './contact-tiles';
+import { STAY_T } from '@/lib/i18n/stay-dict';
 
 const EASE = [0.22, 0.61, 0.12, 1] as const;
 
@@ -188,7 +190,7 @@ const TONE: Record<GuestStay['state'], string> = {
 };
 const PORTAL: Partial<Record<GuestStay['source'], string>> = { booking: 'Booking.com', expedia: 'Expedia', altro_ota: 'OTA' };
 
-export function GuestStays({ email, name, stays }: { email: string; name: string; stays: GuestStay[] }) {
+export function GuestStays({ email, name, stays, contact }: { email: string; name: string; stays: GuestStay[]; contact?: HotelContact }) {
   const { locale, href } = useI18n();
   const a = ACCOUNT_T[locale];
   const router = useRouter();
@@ -250,6 +252,17 @@ export function GuestStays({ email, name, stays }: { email: string; name: string
               <StayCard key={s.token} stay={s} index={i} compact />
             ))}
           </ul>
+        </section>
+      )}
+
+      {/* help at the bottom: the chat with the reception is inside each booking; here call, WhatsApp, e-mail */}
+      {contact && (
+        <section className="mt-16 rounded-[1.75rem] border border-line bg-white p-6 md:p-8" aria-labelledby="acc-help">
+          <h2 id="acc-help" className="serif text-[1.7rem] text-navy">
+            {STAY_T[locale].contactTitle}
+          </h2>
+          <p className="mt-1.5 text-sm leading-relaxed text-mist">{STAY_T[locale].contactText}</p>
+          <ContactTiles className="mt-5" contact={contact} />
         </section>
       )}
     </div>

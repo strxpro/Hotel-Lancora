@@ -8,6 +8,7 @@ import { cashPercentFor, roomPayment } from '@/lib/cash';
 import { roomRatings } from './reviews';
 import { readDb } from './db/store';
 import { onlinePeriods, onlineRoom } from '@/lib/online-price';
+import { monthPrices } from '@/lib/period-prices';
 
 export function popularityMap(db: DB): Map<string, number> {
   const since = addDays(todayISO(), -365);
@@ -17,9 +18,11 @@ export function popularityMap(db: DB): Map<string, number> {
 }
 
 export function toCard(r: LocalizedRoom, popularity = 0, payments?: DB['settings']['payments'], rating: { avg: number; count: number } | null = null): RoomCardData {
-  const settings = readDb().settings;
+  const db = readDb();
+  const settings = db.settings;
   // the prices the guests see (online increase on the card price, when it is on)
   const o = onlineRoom(r, settings);
+  const months = monthPrices(o, onlinePeriods(db.ratePeriods, settings), todayISO());
   return {
     id: r.id,
     slug: r.slug,
@@ -32,6 +35,7 @@ export function toCard(r: LocalizedRoom, popularity = 0, payments?: DB['settings
     size: r.size,
     floor: r.floor,
     basePrice: o.basePrice,
+    fromPrice: months.length ? Math.min(...months.map((m) => m.min)) : o.basePrice,
     cashPrice: typeof o.cashPrice === 'number' ? o.cashPrice : null,
     // a room paid only by card shows no cash price
     cashPercent: payments && roomPayment(r, payments).cash ? cashPercentFor(o, payments) : 0,

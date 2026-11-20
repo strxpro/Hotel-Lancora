@@ -12,6 +12,8 @@ export interface EmailContext {
   settings: Settings;
   extra?: {
     amount?: number; message?: string; promoCode?: string; reviewUrl?: string; changes?: string; lang?: string; code?: string;
+    /** codice_accesso: 'cash' = the code that confirms a booking paid at the hotel */
+    purpose?: 'cash';
     /** cancellation without fee (the hotel granted it) */
     waived?: boolean;
     /** no-show: what happened to the fee */
@@ -223,6 +225,16 @@ const ACCESS_CODE = {
   es: { subject: '{code} es tu código para el área de huésped', title: 'Tu código de acceso', hello: 'Hola {name}:', body: 'este es el código para entrar en tu área de huésped y ver tus reservas:', valid: 'El código vale 10 minutos y solo se puede usar una vez.', ignore: 'Si no lo has pedido tú, ignora este correo: nadie puede entrar sin el código.', cta: 'Abrir el área de huésped' },
 } as const;
 
+/** The code that confirms a booking paid at the hotel (the guest proves the e-mail is theirs). */
+const CASH_CODE = {
+  it: { subject: '{code} è il codice per confermare la prenotazione', title: 'Conferma la prenotazione', hello: 'Ciao {name},', body: 'per confermare la prenotazione con pagamento in hotel inserisci questo codice nella pagina della prenotazione:', valid: 'Il codice vale 10 minuti.', ignore: 'Se non hai prenotato tu, ignora questa email: senza il codice la prenotazione non viene confermata.' },
+  en: { subject: '{code} is the code to confirm your booking', title: 'Confirm your booking', hello: 'Hello {name},', body: 'to confirm your booking with payment at the hotel, type this code on the booking page:', valid: 'The code is valid for 10 minutes.', ignore: 'If you did not book, just ignore this e-mail: without the code the booking is not confirmed.' },
+  pl: { subject: '{code} to kod potwierdzenia rezerwacji', title: 'Potwierdź rezerwację', hello: 'Cześć {name},', body: 'aby potwierdzić rezerwację z płatnością w hotelu, wpisz ten kod na stronie rezerwacji:', valid: 'Kod jest ważny 10 minut.', ignore: 'Jeśli to nie Ty rezerwowałeś, zignoruj tę wiadomość — bez kodu rezerwacja nie zostanie potwierdzona.' },
+  de: { subject: '{code} ist der Code zur Bestätigung Ihrer Buchung', title: 'Buchung bestätigen', hello: 'Hallo {name},', body: 'um Ihre Buchung mit Zahlung im Hotel zu bestätigen, geben Sie diesen Code auf der Buchungsseite ein:', valid: 'Der Code ist 10 Minuten gültig.', ignore: 'Wenn Sie nicht gebucht haben, ignorieren Sie diese E-Mail: Ohne den Code wird die Buchung nicht bestätigt.' },
+  fr: { subject: '{code} est le code pour confirmer votre réservation', title: 'Confirmez votre réservation', hello: 'Bonjour {name},', body: 'pour confirmer votre réservation avec paiement à l’hôtel, saisissez ce code sur la page de réservation :', valid: 'Le code est valable 10 minutes.', ignore: 'Si vous n’avez pas réservé, ignorez cet e-mail : sans le code la réservation n’est pas confirmée.' },
+  es: { subject: '{code} es el código para confirmar tu reserva', title: 'Confirma tu reserva', hello: 'Hola {name}:', body: 'para confirmar tu reserva con pago en el hotel, escribe este código en la página de la reserva:', valid: 'El código vale 10 minutos.', ignore: 'Si no has reservado tú, ignora este correo: sin el código la reserva no se confirma.' },
+} as const;
+
 /** E-mails of the booking page (messages, no-show, card, change of dates), in the guest's language. */
 const CARE = {
   it: {
@@ -374,7 +386,8 @@ export function renderEmail(template: EmailTemplate, ctx: EmailContext): Rendere
     }
     case 'codice_accesso': {
       // the language of the page where the guest asked for the code (extra.lang), the code in extra.code
-      const L = ACCESS_CODE[lang] ?? ACCESS_CODE.it;
+      const forCash = extra?.purpose === 'cash';
+      const L = forCash ? (CASH_CODE[lang as keyof typeof CASH_CODE] ?? CASH_CODE.it) : (ACCESS_CODE[lang] ?? ACCESS_CODE.it);
       const accessCode = esc(extra?.code ?? '');
       subject = L.subject.replace('{code}', extra?.code ?? '');
       title = L.title;
@@ -383,7 +396,7 @@ export function renderEmail(template: EmailTemplate, ctx: EmailContext): Rendere
         `<div style="margin:22px 0 22px;padding:22px 10px;background:#FFFFFF;border:1px solid #E7D9C1;text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:38px;letter-spacing:12px;color:#10283D;">${accessCode}</div>` +
         p(esc(L.valid)) +
         `<p style="font-size:13px;line-height:1.6;margin:0 0 14px;color:#6B7376;">${esc(L.ignore)}</p>`;
-      cta = { label: L.cta, href: siteUrl(lang, '/area-ospite') };
+      if (!forCash) cta = { label: ACCESS_CODE[lang]?.cta ?? ACCESS_CODE.it.cta, href: siteUrl(lang, '/area-ospite') };
       break;
     }
     case 'messaggio_hotel': {

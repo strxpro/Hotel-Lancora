@@ -60,7 +60,8 @@ function SmoothScroll({ children }: { children: React.ReactNode }) {
   const popRef = useRef(false);
 
   useEffect(() => {
-    if (reduced) return;
+    // touch screens keep the phone's own scrolling: it is the smoothest there is, and nothing can jump
+    if (reduced || window.matchMedia('(hover: none), (pointer: coarse)').matches) return;
     const lenis = new Lenis({ lerp: 0.12, smoothWheel: true, wheelMultiplier: 1, touchMultiplier: 1.4 });
     ref.current = lenis;
     lenis.on('scroll', ScrollTrigger.update);
@@ -90,6 +91,25 @@ function SmoothScroll({ children }: { children: React.ReactNode }) {
     const id = window.setTimeout(() => ScrollTrigger.refresh(), 250);
     return () => window.clearTimeout(id);
   }, [pathname]);
+
+  // photos and late content change the page height: the scroll animations are measured again
+  // (otherwise a section can stay hidden below the screen, a blank gap, then pop in)
+  useEffect(() => {
+    let last = document.documentElement.scrollHeight;
+    let t = 0;
+    const ro = new ResizeObserver(() => {
+      const h = document.documentElement.scrollHeight;
+      if (Math.abs(h - last) < 2) return;
+      last = h;
+      window.clearTimeout(t);
+      t = window.setTimeout(() => ScrollTrigger.refresh(), 180);
+    });
+    ro.observe(document.body);
+    return () => {
+      ro.disconnect();
+      window.clearTimeout(t);
+    };
+  }, []);
 
   return <LenisContext.Provider value={ref}>{children}</LenisContext.Provider>;
 }

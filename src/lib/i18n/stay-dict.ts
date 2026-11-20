@@ -1,0 +1,13 @@
+import type { Locale } from '../types';
+
+/** The guest's booking page and guest area: quick actions and contact. */
+type StayText = { dates: string; write: string; call: string; whatsapp: string; email: string; directions: string; msgHint: string; now: string; change: string; contactTitle: string; contactText: string };
+
+export const STAY_T: Record<Locale, StayText> = {
+  it: { dates: 'Cambia date', write: 'Scrivi all’hotel', call: 'Chiama', whatsapp: 'WhatsApp', email: 'Email', directions: 'Come arrivare', msgHint: 'La reception riceve subito il tuo messaggio e ti risponde qui.', now: 'Le tue date', change: 'Scegli nuove date', contactTitle: 'Serve aiuto?', contactText: 'Scrivici dalla pagina della prenotazione (la reception risponde lì) oppure chiamaci.' },
+  en: { dates: 'Change dates', write: 'Write to the hotel', call: 'Call', whatsapp: 'WhatsApp', email: 'E-mail', directions: 'Directions', msgHint: 'The reception gets your message at once and answers here.', now: 'Your dates', change: 'Pick new dates', contactTitle: 'Need help?', contactText: 'Write to us from the booking page (the reception answers there) or call us.' },
+  pl: { dates: 'Zmień daty', write: 'Napisz do hotelu', call: 'Zadzwoń', whatsapp: 'WhatsApp', email: 'E-mail', directions: 'Dojazd', msgHint: 'Recepcja od razu dostaje Twoją wiadomość i odpowiada tutaj.', now: 'Twoje daty', change: 'Wybierz nowe daty', contactTitle: 'Potrzebujesz pomocy?', contactText: 'Napisz do nas ze strony rezerwacji (recepcja odpowiada tam) albo zadzwoń.' },
+  de: { dates: 'Daten ändern', write: 'Dem Hotel schreiben', call: 'Anrufen', whatsapp: 'WhatsApp', email: 'E-Mail', directions: 'Anfahrt', msgHint: 'Die Rezeption erhält Ihre Nachricht sofort und antwortet hier.', now: 'Ihre Daten', change: 'Neue Daten wählen', contactTitle: 'Brauchen Sie Hilfe?', contactText: 'Schreiben Sie uns auf der Buchungsseite (die Rezeption antwortet dort) oder rufen Sie an.' },
+  fr: { dates: 'Changer les dates', write: 'Écrire à l’hôtel', call: 'Appeler', whatsapp: 'WhatsApp', email: 'E-mail', directions: 'Itinéraire', msgHint: 'La réception reçoit votre message tout de suite et vous répond ici.', now: 'Vos dates', change: 'Choisir de nouvelles dates', contactTitle: 'Besoin d’aide ?', contactText: 'Écrivez-nous depuis la page de la réservation (la réception y répond) ou appelez-nous.' },
+  es: { dates: 'Cambiar fechas', write: 'Escribir al hotel', call: 'Llamar', whatsapp: 'WhatsApp', email: 'Correo', directions: 'Cómo llegar', msgHint: 'La recepción recibe tu mensaje enseguida y te responde aquí.', now: 'Tus fechas', change: 'Elegir nuevas fechas', contactTitle: '¿Necesitas ayuda?', contactText: 'Escríbenos desde la página de la reserva (la recepción responde allí) o llámanos.' },
+};

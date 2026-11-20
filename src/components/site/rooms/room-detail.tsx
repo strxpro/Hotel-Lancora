@@ -128,7 +128,7 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
             {t.room.back}
           </TLink>
         </div>
-        <div className="mt-20 grid gap-6 md:grid-cols-12 md:items-end">
+        <div className="mt-14 grid gap-4 md:mt-20 md:grid-cols-12 md:items-end md:gap-6">
           <div className="md:col-span-8">
             <p className="eyebrow flex items-center gap-3 text-gold-2">
               {room.number && (
@@ -167,18 +167,23 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
         {/* gallery: swap photos, zoom with a morph */}
         <RoomGallery photos={room.photos} mainRef={mainRef} />
 
-        <div className="mt-20 grid gap-16 lg:grid-cols-12">
+        <div className="mt-12 grid gap-12 md:mt-20 lg:grid-cols-12 lg:gap-16">
           <div className="lg:col-span-7">
             <Reveal>
               <p className="eyebrow text-gold-2">{t.room.about}</p>
-              <p className="serif mt-5 text-[clamp(1.7rem,2.6vw,2.4rem)] leading-snug text-navy">{room.short}</p>
-              <div className="mt-8 space-y-5 text-[1.03rem] leading-[1.85] text-charcoal/85">
-                {room.description.split(/\n{2,}/).map((para, i) => (
-                  <p key={i}>{para}</p>
-                ))}
+              <p className="serif mt-4 text-[clamp(1.5rem,2.6vw,2.4rem)] leading-snug text-navy md:mt-5">{room.short}</p>
+              <div className="mt-5 space-y-4 text-[1rem] leading-[1.75] text-charcoal/85 md:mt-8 md:space-y-5 md:text-[1.03rem] md:leading-[1.85]">
+                {/* paragraphs only where the text has them: no empty lines, a single line break is just a space */}
+                {room.description
+                  .split(/\n\s*\n+/)
+                  .map((para) => para.replace(/\s*\n\s*/g, ' ').trim())
+                  .filter(Boolean)
+                  .map((para, i) => (
+                    <p key={i}>{para}</p>
+                  ))}
               </div>
             </Reveal>
-            <Reveal as="ul" stagger={0.06} className={cn('mt-14 grid grid-cols-2 gap-px bg-line', facts.length === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
+            <Reveal as="ul" stagger={0.06} className={cn('mt-10 grid grid-cols-2 gap-px bg-line md:mt-14', facts.length === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
               {facts.map((f) => (
                 <li key={f.label} className="bg-ivory p-5">
                   <f.icon className="h-5 w-5 text-gold-2" strokeWidth={1.3} />
@@ -187,7 +192,7 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
                 </li>
               ))}
             </Reveal>
-            <Reveal className="mt-16">
+            <Reveal className="mt-12 md:mt-16">
               <h2 className="serif text-[2rem] text-navy">{t.room.amenities}</h2>
               <ul className="mt-6 grid gap-x-8 gap-y-4 sm:grid-cols-2">
                 {room.amenities.map((a) => (
@@ -198,7 +203,7 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
                 ))}
               </ul>
             </Reveal>
-            <Reveal className="mt-16">
+            <Reveal className="mt-12 md:mt-16">
               <h2 className="serif text-[2rem] text-navy">{t.room.policies}</h2>
               <dl className="mt-6 grid gap-6 text-sm sm:grid-cols-3">
                 <div>

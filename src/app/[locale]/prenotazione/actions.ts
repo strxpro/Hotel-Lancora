@@ -1,9 +1,11 @@
 'use server';
 import { z } from 'zod';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { BookingError, confirmPayAtHotel, confirmPayment, createWebsiteHold, paymentFailed, findBookingByToken } from '@/server/bookings';
-import { readDb } from '@/server/db/store';
+import { mutate, readDb } from '@/server/db/store';
+import { queueEmail, smtpConfigured } from '@/server/events';
+import { CASH_COOKIE, CASH_PER_DAY, codeFor, codeMatches, maskEmail, readCashCookie, recentCashBookings, writeCashCookie } from '@/server/email-code';
 import { roomPayment } from '@/lib/cash';
 import { amountDueNow } from '@/lib/availability';
 import { cardPaymentsReady, createCheckoutSession, payoutDestination, publishableKey, simulationAllowed, stripeMode } from '@/server/payments/stripe';
@@ -131,15 +133,58 @@ export async function startStripeCheckout(token: string, locale: string, embedde
   }
 }
 
-/** Guest pays cash at check-in: the cash price applies and the booking is confirmed now. */
-export async function payAtHotel(token: string): Promise<{ ok: true } | { ok: false; error: string }> {
+/** This device or this e-mail already confirmed enough "pay at the hotel" bookings today. */
+async function tooManyCash(email: string): Promise<boolean> {
+  const device = readCashCookie((await cookies()).get(CASH_COOKIE)?.value);
+  return device.length >= CASH_PER_DAY || recentCashBookings(readDb(), email) >= CASH_PER_DAY;
+}
+
+const cashSubject = (b: { token: string; guest: { email: string } }) => `${b.token}|${b.guest.email}`;
+
+export type CashCodeResult = { ok: true; skip?: boolean; sentTo?: string } | { ok: false; error: string };
+
+/**
+ * "Pay at the hotel", step 1: a 6-digit code to the e-mail of the booking, so nobody can block rooms
+ * with a made-up address. Without an e-mail service connected nothing is sent (skip) and the
+ * booking is confirmed as before.
+ */
+export async function sendCashCode(token: string, locale: string): Promise<CashCodeResult> {
   try {
-    if (!rateLimit(`cash:${await ip()}`, 10, 10 * 60_000)) return { ok: false, error: 'Troppi tentativi.' };
+    if (!rateLimit(`cash-code:${await ip()}`, 6, 15 * 60_000)) return { ok: false, error: 'too_many' };
+    const b = pendingBooking(token);
+    if (!payOptions(b.roomId).cash) return { ok: false, error: 'Per questa camera si paga solo con carta online.' };
+    // the hotel wants a card as a guarantee: the card itself is the check
+    if (guaranteeRequired()) return { ok: false, error: 'guarantee' };
+    if (await tooManyCash(b.guest.email)) return { ok: false, error: 'already' };
+    if (!smtpConfigured()) return { ok: true, skip: true };
+    const code = codeFor('cash', cashSubject(b));
+    const lang = isLocale(locale) ? locale : 'it';
+    mutate((db) => {
+      queueEmail(db, 'codice_accesso', b.guest.email, { booking: db.bookings.find((x) => x.id === b.id) ?? b, room: null, extra: { code, lang, purpose: 'cash' } });
+    });
+    return { ok: true, sentTo: maskEmail(b.guest.email) };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** "Pay at the hotel", step 2: with the right code the cash price applies and the booking is confirmed. */
+export async function payAtHotel(token: string, code = ''): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    if (!rateLimit(`cash:${await ip()}`, 10, 10 * 60_000)) return { ok: false, error: 'too_many' };
     const b = pendingBooking(token);
     if (!payOptions(b.roomId).cash) return { ok: false, error: 'Per questa camera si paga solo con carta online.' };
     // the hotel wants a card as a guarantee: the booking is confirmed when the card is saved
     if (guaranteeRequired()) return { ok: false, error: 'guarantee' };
+    if (await tooManyCash(b.guest.email)) return { ok: false, error: 'already' };
+    if (smtpConfigured()) {
+      if (!rateLimit(`cash-try:${token}`, 6, 30 * 60_000)) return { ok: false, error: 'too_many' };
+      if (!codeMatches('cash', cashSubject(b), code)) return { ok: false, error: 'code' };
+    }
     confirmPayAtHotel(b.id);
+    // this device: one more "pay at the hotel" booking today
+    const jar = await cookies();
+    jar.set(CASH_COOKIE, writeCashCookie([...readCashCookie(jar.get(CASH_COOKIE)?.value), Date.now()]), { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: 24 * 3600 });
     revalidatePath('/', 'layout');
     return { ok: true };
   } catch (e) {
