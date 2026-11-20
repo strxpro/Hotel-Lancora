@@ -100,7 +100,7 @@ export function MoneyHero({ monthLabel, month, today, due, cashDue, byCard, byCa
 
 const INTERVAL: Record<ConnectView['payoutInterval'], string> = { daily: 'ogni giorno', weekly: 'ogni settimana', monthly: 'ogni mese' };
 
-export function AccountCard({ c, mode, demo = true, platformOk = true, support = false }: { c: ConnectView; mode: 'test' | 'live' | 'off'; demo?: boolean; /** Stripe lets hotels connect (the site's own account is activated) */ platformOk?: boolean; /** the technical assistance (not the owner) is looking */ support?: boolean }) {
+export function AccountCard({ c, mode, demo = true, platformOk = true, support = false, stripeSchedule = null }: { c: ConnectView; mode: 'test' | 'live' | 'off'; demo?: boolean; /** Stripe lets hotels connect (the site's own account is activated) */ platformOk?: boolean; /** the technical assistance (not the owner) is looking */ support?: boolean; /** the payout calendar as Stripe really has it (it can differ from the panel's) */ stripeSchedule?: { label: string; manual: boolean } | null }) {
   const { run, pending } = useAction();
   const [open, setOpen] = useState(false);
   const [sched, setSched] = useState({ interval: c.payoutInterval, weeklyAnchor: (DAYS.some(([k]) => k === c.weeklyAnchor) ? c.weeklyAnchor : 'monday') as (typeof DAYS)[number][0], monthlyAnchor: c.monthlyAnchor });
@@ -137,7 +137,8 @@ export function AccountCard({ c, mode, demo = true, platformOk = true, support =
               <CalendarClock className="h-5 w-5 text-gold-2" />
               <span className="min-w-0 flex-1">
                 <span className="block text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-mist">Bonifici</span>
-                <span className="block text-sm font-semibold text-navy">{when}</span>
+                <span className={cn('block text-sm font-semibold', stripeSchedule?.manual ? 'text-terracotta' : 'text-navy')}>{stripeSchedule ? stripeSchedule.label.charAt(0).toUpperCase() + stripeSchedule.label.slice(1) : when}</span>
+                {stripeSchedule?.manual && <span className="block text-[0.7rem] text-mist">I soldi restano su Stripe: scegli “ogni giorno”</span>}
               </span>
               <span className="text-xs font-semibold text-navy underline-offset-2 hover:underline">Cambia</span>
             </button>
@@ -320,6 +321,12 @@ export function GuestPayments({ initial, cardsOn = false }: { initial: Pay; card
   const sentence = cancelText('it', rules);
   const example = 300;
   const later = f.chargeLater;
+  const whenPay = later.enabled ? 'later' : f.mode === 'full' ? 'full' : 'deposit';
+  const WHEN = [
+    { v: 'full', icon: CreditCard, t: 'Tutto subito', d: 'Pagano l’intero soggiorno quando prenotano.', pick: () => setF({ ...f, mode: 'full', chargeLater: { ...later, enabled: false } }) },
+    { v: 'deposit', icon: Wallet, t: 'Un acconto subito', d: 'Una parte quando prenotano, il resto in hotel.', pick: () => setF({ ...f, mode: f.mode === 'full' ? 'deposit_percent' : f.mode, chargeLater: { ...later, enabled: false } }) },
+    { v: 'later', icon: CalendarClock, t: 'Più tardi', d: `Salvano la carta: addebito ${later.daysBefore === 1 ? 'il giorno prima' : `${later.daysBefore} giorni prima`} dell’arrivo.`, pick: () => setF({ ...f, chargeLater: { ...later, enabled: true } }) },
+  ] as const;
   const now = later.enabled ? 0 : f.mode === 'full' ? example : f.mode === 'deposit_percent' ? Math.round(example * f.depositPercent) / 100 : Math.min(example, f.depositFixed);
 
   return (
@@ -363,88 +370,124 @@ export function GuestPayments({ initial, cardsOn = false }: { initial: Pay; card
         })}
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <AnimatePresence initial={false}>
-          {f.allowOnline && (
-            <motion.div key="deposit" layout initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="rounded-[1.4rem] bg-ivory p-5">
-              <p className="text-sm font-semibold text-navy">Con la carta, quanto pagano subito</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(
-                  [
-                    ['full', 'Tutto'],
-                    ['deposit_percent', 'Acconto %'],
-                    ['deposit_fixed', 'Acconto fisso'],
-                  ] as const
-                ).map(([v, l]) => (
-                  <Chip key={v} on={!later.enabled && f.mode === v} onClick={() => setF({ ...f, mode: v, chargeLater: { ...later, enabled: false } })}>
-                    {l}
-                  </Chip>
-                ))}
-                <Chip on={later.enabled} onClick={() => setF({ ...f, chargeLater: { ...later, enabled: true } })}>
-                  Più tardi
-                </Chip>
+      {/* when card guests pay: big and on its own, right under how they pay */}
+      <AnimatePresence initial={false}>
+        {f.allowOnline && (
+          <motion.div key="when" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.45, ease: EASE }} className="overflow-hidden" data-testid="when-pay">
+            <div className="mt-8 border-t border-line pt-6">
+              <p className="serif text-[1.6rem] leading-tight text-navy">Quando pagano con la carta</p>
+              <p className="text-sm text-mist">Tutto quando prenotano, un acconto, oppure più tardi: la carta resta salvata e l’importo si addebita prima dell’arrivo.</p>
+              <div role="radiogroup" aria-label="Quando pagano con la carta" className="mt-4 grid gap-3 sm:grid-cols-3">
+                {WHEN.map((o, i) => {
+                  const on = whenPay === o.v;
+                  return (
+                    <motion.button
+                      key={o.v}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      initial={{ opacity: 0, y: 14 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 + i * 0.08, duration: 0.5, ease: EASE }}
+                      whileHover={{ y: -3 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={o.pick}
+                      className={cn('relative flex flex-col gap-2 overflow-hidden rounded-[1.4rem] border p-4 text-left transition-colors', on ? 'border-navy text-ivory' : 'border-line bg-ivory text-navy hover:border-navy/40')}
+                    >
+                      {on && <motion.span layoutId="when-pay" className="absolute inset-0 -z-0 bg-navy" transition={{ type: 'spring', stiffness: 380, damping: 32 }} />}
+                      <o.icon className={cn('relative h-6 w-6', on ? 'text-gold' : 'text-gold-2')} />
+                      <span className="relative text-[0.95rem] font-semibold">{o.t}</span>
+                      <span className={cn('relative text-[0.75rem] leading-snug', on ? 'text-ivory/70' : 'text-mist')}>{o.d}</span>
+                      {on && (
+                        <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 20 }} className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-gold text-navy-3">
+                          <Check className="h-3.5 w-3.5" />
+                        </motion.span>
+                      )}
+                    </motion.button>
+                  );
+                })}
               </div>
-              <AnimatePresence initial={false}>
-                {later.enabled && (
-                  <motion.div key="later" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.35, ease: EASE }} className="overflow-hidden" data-testid="charge-later-settings">
-                    <p className="mt-5 flex items-center gap-2 text-sm font-semibold text-navy">
-                      <CalendarClock className="h-4 w-4 text-gold-2" /> Addebito sulla carta
-                    </p>
-                    <Stepper value={later.daysBefore} min={1} max={30} step={1} unit={later.daysBefore === 1 ? 'giorno prima dell’arrivo' : 'giorni prima dell’arrivo'} onChange={(v) => setF({ ...f, chargeLater: { ...later, daysBefore: v } })} />
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Chip on={later.auto} onClick={() => setF({ ...f, chargeLater: { ...later, auto: true } })}>
-                        In automatico
-                      </Chip>
-                      <Chip on={!later.auto} onClick={() => setF({ ...f, chargeLater: { ...later, auto: false } })}>
-                        Solo quando clicco io
-                      </Chip>
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div key={whenPay} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.3, ease: EASE }} className="mt-4 rounded-[1.4rem] bg-ivory p-5">
+                  {whenPay === 'deposit' && (
+                    <>
+                      <p className="text-sm font-semibold text-navy">Quanto pagano subito</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Chip on={f.mode === 'deposit_percent'} onClick={() => setF({ ...f, mode: 'deposit_percent' })}>
+                          Una percentuale
+                        </Chip>
+                        <Chip on={f.mode === 'deposit_fixed'} onClick={() => setF({ ...f, mode: 'deposit_fixed' })}>
+                          Un importo fisso
+                        </Chip>
+                      </div>
+                      {f.mode === 'deposit_percent' && <Slider value={f.depositPercent} min={10} max={100} step={5} suffix="%" onChange={(v) => setF({ ...f, depositPercent: v })} />}
+                      {f.mode === 'deposit_fixed' && <Stepper value={f.depositFixed} min={10} max={2000} step={10} unit="€" onChange={(v) => setF({ ...f, depositFixed: v })} />}
+                    </>
+                  )}
+                  {whenPay === 'later' && (
+                    <div data-testid="charge-later-settings">
+                      <p className="flex items-center gap-2 text-sm font-semibold text-navy">
+                        <CalendarClock className="h-4 w-4 text-gold-2" /> Addebito sulla carta
+                      </p>
+                      <Stepper value={later.daysBefore} min={1} max={30} step={1} unit={later.daysBefore === 1 ? 'giorno prima dell’arrivo' : 'giorni prima dell’arrivo'} onChange={(v) => setF({ ...f, chargeLater: { ...later, daysBefore: v } })} />
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Chip on={later.auto} onClick={() => setF({ ...f, chargeLater: { ...later, auto: true } })}>
+                          In automatico
+                        </Chip>
+                        <Chip on={!later.auto} onClick={() => setF({ ...f, chargeLater: { ...later, auto: false } })}>
+                          Solo quando clicco io
+                        </Chip>
+                      </div>
+                      {!cardsOn && <p className="mt-2 text-[0.75rem] text-mist">Funziona quando i pagamenti con carta sono attivi.</p>}
                     </div>
-                    {!cardsOn && <p className="mt-2 text-[0.75rem] text-mist">Funziona quando i pagamenti con carta sono attivi.</p>}
-                  </motion.div>
-                )}
+                  )}
+                  <p className={cn('text-[0.8rem] leading-relaxed text-charcoal/80', whenPay !== 'full' && 'mt-4')}>
+                    Su un soggiorno da {money(example)}: subito{' '}
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.strong key={now} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="inline-block text-navy">
+                        {money(now)}
+                      </motion.strong>
+                    </AnimatePresence>
+                    {later.enabled
+                      ? `; ${money(example)} sulla carta ${later.daysBefore === 1 ? 'il giorno prima' : `${later.daysBefore} giorni prima`} dell’arrivo, ${later.auto ? 'in automatico' : 'quando premi “Addebita ora”'}. Se l’arrivo è più vicino, paga tutto subito.`
+                      : now < example
+                        ? `, il resto (${money(example - now)}) all’arrivo.`
+                        : ', niente all’arrivo.'}
+                  </p>
+                </motion.div>
               </AnimatePresence>
-              {!later.enabled && f.mode === 'deposit_percent' && <Slider value={f.depositPercent} min={10} max={100} step={5} suffix="%" onChange={(v) => setF({ ...f, depositPercent: v })} />}
-              {!later.enabled && f.mode === 'deposit_fixed' && <Stepper value={f.depositFixed} min={10} max={2000} step={10} unit="€" onChange={(v) => setF({ ...f, depositFixed: v })} />}
-              <p className="mt-4 text-[0.78rem] text-mist">
-                Su un soggiorno da {money(example)}: subito{' '}
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.strong key={now} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="inline-block text-navy">
-                    {money(now)}
-                  </motion.strong>
-                </AnimatePresence>
-                {later.enabled
-                  ? `; ${money(example)} sulla carta ${later.daysBefore === 1 ? 'il giorno prima' : `${later.daysBefore} giorni prima`} dell’arrivo, ${later.auto ? 'in automatico' : 'quando premi “Addebita ora”'}. Se l’arrivo è più vicino, paga tutto subito.`
-                  : now < example
-                    ? `, il resto (${money(example - now)}) all’arrivo.`
-                    : '.'}
-              </p>
-            </motion.div>
-          )}
-          {f.allowCashAtHotel && (
-            <motion.div key="cash" layout initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="rounded-[1.4rem] bg-ivory p-5">
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence initial={false}>
+        {f.allowCashAtHotel && (
+          <motion.div key="cash" layout initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="mt-6 grid gap-4 rounded-[1.4rem] bg-ivory p-5 md:grid-cols-2">
+            <div>
               <p className="text-sm font-semibold text-navy">Sconto per chi paga in contanti</p>
               <Slider value={f.cashDiscountPercent} min={0} max={15} step={0.5} suffix="%" onChange={(v) => setF({ ...f, cashDiscountPercent: v })} />
               <p className="mt-4 text-[0.78rem] text-mist">Sul sito ogni camera mostra il prezzo con carta e quello in contanti. In Italia si può solo scontare i contanti, non far pagare di più la carta.</p>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={f.cardGuarantee}
-                onClick={() => setF({ ...f, cardGuarantee: !f.cardGuarantee })}
-                className={cn('mt-4 flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition-colors', f.cardGuarantee ? 'border-navy bg-white' : 'border-line bg-white/60 hover:border-navy/40')}
-              >
-                <span className={cn('relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors', f.cardGuarantee ? 'bg-navy' : 'bg-line')}>
-                  <motion.span layout transition={{ type: 'spring', stiffness: 500, damping: 30 }} className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow', f.cardGuarantee ? 'right-0.5' : 'left-0.5')} />
-                </span>
-                <span className="text-[0.8rem] leading-snug text-charcoal/85">
-                  <span className="block font-semibold text-navy">Carta a garanzia anche per chi paga in contanti</span>
-                  Non si addebita niente quando prenota: la carta resta collegata alla prenotazione per il no-show o la cancellazione tardiva.
-                  {!cardsOn && <span className="mt-1 block text-mist">Funziona quando i pagamenti con carta sono attivi.</span>}
-                </span>
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={f.cardGuarantee}
+              onClick={() => setF({ ...f, cardGuarantee: !f.cardGuarantee })}
+              className={cn('flex w-full items-start gap-3 self-start rounded-2xl border p-3 text-left transition-colors', f.cardGuarantee ? 'border-navy bg-white' : 'border-line bg-white/60 hover:border-navy/40')}
+            >
+              <span className={cn('relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors', f.cardGuarantee ? 'bg-navy' : 'bg-line')}>
+                <motion.span layout transition={{ type: 'spring', stiffness: 500, damping: 30 }} className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow', f.cardGuarantee ? 'right-0.5' : 'left-0.5')} />
+              </span>
+              <span className="text-[0.8rem] leading-snug text-charcoal/85">
+                <span className="block font-semibold text-navy">Carta a garanzia anche per chi paga in contanti</span>
+                Non si addebita niente quando prenota: la carta resta collegata alla prenotazione per il no-show o la cancellazione tardiva.
+                {!cardsOn && <span className="mt-1 block text-mist">Funziona quando i pagamenti con carta sono attivi.</span>}
+              </span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <motion.div layout className="mt-4 rounded-[1.4rem] bg-ivory p-5">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-4">

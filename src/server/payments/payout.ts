@@ -86,21 +86,18 @@ async function fromStripe(db: DB): Promise<PayoutInfo> {
   const pending = eur(balance.pending);
   const base = { source: 'stripe' as const, mode: stripeMode(), schedule: scheduleLabel(schedule), bank: bank?.last4 ? `•••• ${bank.last4}` : null, available, pending, last: paid ? { amount: paid.amount / 100, date: isoDay(paid.arrival_date) } : null };
   if (upcoming) return { ...base, amount: upcoming.amount / 100, date: isoDay(upcoming.arrival_date), status: upcoming.status as 'pending' | 'in_transit' };
-  if (schedule.interval === 'manual') return { ...base, amount: available, date: null, status: 'manual' };
-  // no payout created yet: the next one takes what is available by then. Money still "in arrivo"
-  // becomes available on its own day (Stripe holds card payments a few days), so look at those days.
+  // money still "in arrivo" becomes available on its own day (Stripe holds card payments a few days)
+  const waiting = pending > 0 ? (await s.balanceTransactions.list({ limit: 100 }, opts)).data.filter((t) => t.status === 'pending' && t.currency === 'eur') : [];
+  const availableOn = waiting.length ? isoDay(Math.min(...waiting.map((t) => t.available_on))) : null;
+  // payouts "a mano" on Stripe: nothing leaves by itself; say how much and from which day it can
+  if (schedule.interval === 'manual') return { ...base, amount: Math.round((available + pending) * 100) / 100, date: null, status: 'manual', availableOn };
+  // no payout created yet: the next one takes what is available by then
   let date = nextPayoutDay(todayISO(), schedule);
   let amount = available;
-  let availableOn: string | null = null;
-  if (pending > 0) {
-    const txs = await s.balanceTransactions.list({ limit: 100 }, opts);
-    const waiting = txs.data.filter((t) => t.status === 'pending' && t.currency === 'eur');
-    if (waiting.length) {
-      availableOn = isoDay(Math.min(...waiting.map((t) => t.available_on)));
-      if (available <= 0) date = nextPayoutDay(availableOn > todayISO() ? availableOn : todayISO(), schedule);
-      const by = date;
-      amount = Math.round((available * 100 + waiting.filter((t) => by && isoDay(t.available_on) <= by).reduce((a, t) => a + t.net, 0))) / 100;
-    }
+  if (availableOn) {
+    if (available <= 0) date = nextPayoutDay(availableOn > todayISO() ? availableOn : todayISO(), schedule);
+    const by = date;
+    amount = Math.round(available * 100 + waiting.filter((t) => by && isoDay(t.available_on) <= by).reduce((a, t) => a + t.net, 0)) / 100;
   }
   return { ...base, amount, date, status: 'scheduled', availableOn };
 }

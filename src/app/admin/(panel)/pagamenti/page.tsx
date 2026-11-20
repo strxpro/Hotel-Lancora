@@ -10,6 +10,8 @@ import { PaymentsLedger } from '@/components/admin/payments-ledger';
 import { PendingCharges } from '@/components/admin/pending-charges';
 import { pendingCharges } from '@/server/payments/charge-later';
 import { chargeLaterRule } from '@/lib/charge-later';
+import { payoutInfo } from '@/server/payments/payout';
+import { PayoutCard } from '@/components/admin/payout-card';
 
 export const metadata = { title: 'Pagamenti' };
 
@@ -39,6 +41,8 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
   const cashDue = db.bookings.filter((b) => b.status === 'confirmed' && b.paymentMethod === 'cash' && b.checkOut > today).reduce((s, b) => s + Math.max(0, b.total - b.amountPaid), 0);
   const notice = sp.stripe ? NOTICE[sp.stripe] : null;
   const c = db.settings.stripeConnect;
+  // the next payout to the bank, with its day (Stripe's own numbers, cached a few minutes)
+  const payout = stripeMode() !== 'off' || c.simulated ? await payoutInfo(db) : null;
   const payments = [...db.payments].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 500);
   return (
     <div>
@@ -48,6 +52,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
           <Badge tone={notice.tone}>{notice.text}</Badge>
         </p>
       )}
+      {payout && <PayoutCard info={payout} link={false} />}
       <div className="grid gap-4 [&>*]:min-w-0 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
         <MoneyHero
           monthLabel={fmtDate(today, 'it', { month: 'long' })}
@@ -64,6 +69,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
           demo={process.env.DEMO_MODE !== 'false'}
           platformOk={await platformReady()}
           support={user.role === 'admin' && user.id !== OWNER_ID}
+          stripeSchedule={payout?.source === 'stripe' ? { label: payout.schedule, manual: payout.status === 'manual' } : null}
           c={{
             accountId: c.accountId,
             simulated: c.simulated,
