@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { TaxLine } from './tax-line';
+import { ExtrasPicker, type SiteExtra } from './extras-picker';
 import type { TaxQuote } from '@/lib/tourist-tax';
 import type { Locale } from '@/lib/types';
 import Image from 'next/image';
@@ -49,6 +50,7 @@ export function BookingFlow({
   cash = { enabled: false, percent: 0 },
   online = true,
   times = null,
+  extras = [],
 }: {
   today: string;
   initialQuery: StayQuery;
@@ -62,7 +64,10 @@ export function BookingFlow({
   online?: boolean;
   /** check-in / check-out hours (Impostazioni → Arrivo e partenza), shown like Booking does */
   times?: StayTimes | null;
+  /** Supplementi the hotel offers (paid at the hotel), names in the guest's language */
+  extras?: SiteExtra[];
 }) {
+  const [chosen, setChosen] = useState<string[]>([]);
   const [method, setMethod] = useState<'card' | 'cash'>(online || !cash.enabled ? 'card' : 'cash');
   const { t, locale, href } = useI18n();
   const router = useRouter();
@@ -211,6 +216,7 @@ export function BookingFlow({
         privacy: true,
         terms: true,
         promoCode: promo,
+        extras: chosen.filter((id) => extras.some((e) => e.id === id)),
       });
       if (!res.ok) {
         setMessage(res.code === 'conflict' ? t.booking.conflict : res.error);
@@ -278,7 +284,7 @@ export function BookingFlow({
     </label>
   );
 
-  const summary = <Summary room={room} query={query} quote={quote} hold={hold} payments={payments} promoInput={promoInput} setPromoInput={setPromoInput} applyPromo={() => setPromo(promoInput.trim() || null)} canPromo={step === 2 && !hold} guests={guests} cashPercent={cashPct} method={step === 3 ? method : 'card'} times={times} />;
+  const summary = <Summary room={room} query={query} quote={quote} hold={hold} payments={payments} promoInput={promoInput} setPromoInput={setPromoInput} applyPromo={() => setPromo(promoInput.trim() || null)} canPromo={step === 2 && !hold} guests={guests} cashPercent={cashPct} method={step === 3 ? method : 'card'} times={times} extras={extras} chosen={chosen} onToggleExtra={(id) => setChosen((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]))} />;
 
   return (
     <div id="prenotazione-top" className="grid gap-10 [&>*]:min-w-0 md:grid-cols-12 md:gap-8 lg:gap-14">
@@ -543,7 +549,7 @@ function MobileSummary({ room, query, total, guests, children }: { room: RoomCar
   );
 }
 
-function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput, applyPromo, canPromo, guests, cashPercent, method, times = null }: { room: RoomCardData | null; query: StayQuery; quote: QuoteResponse | null; hold: Hold | null; payments: Payments; promoInput: string; setPromoInput: (s: string) => void; applyPromo: () => void; canPromo: boolean; guests: number; cashPercent: number; method: 'card' | 'cash'; times?: StayTimes | null }) {
+function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput, applyPromo, canPromo, guests, cashPercent, method, times = null, extras = [], chosen = [], onToggleExtra }: { room: RoomCardData | null; query: StayQuery; quote: QuoteResponse | null; hold: Hold | null; payments: Payments; promoInput: string; setPromoInput: (s: string) => void; applyPromo: () => void; canPromo: boolean; guests: number; cashPercent: number; method: 'card' | 'cash'; times?: StayTimes | null; extras?: SiteExtra[]; chosen?: string[]; onToggleExtra?: (id: string) => void }) {
   const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
   const q = quote?.quote;
@@ -664,6 +670,7 @@ function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput
           </div>
         )}
         {quote?.touristTax && <TaxLine className="mt-3" tax={quote.touristTax} />}
+        {q && extras.length > 0 && (canPromo || chosen.length > 0) && <ExtrasPicker extras={extras} chosen={chosen} onToggle={canPromo && !hold ? onToggleExtra : undefined} nights={q.nights} guests={guests} />}
         {!showCash && dueNow !== null && total !== null && (
           <div className="mt-3 space-y-1 text-sm">
             <p className="flex justify-between text-navy">

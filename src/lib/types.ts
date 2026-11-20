@@ -334,6 +334,8 @@ export interface Settings {
     checkOutBy: string;
     /** "Da sapere": pets, smoking, parties… (Impostazioni → Arrivo e partenza); absent = defaults in lib/house-rules.ts */
     rules?: import('./house-rules').HouseRules;
+    /** photos of the home section “A 300 metri dal mare” (Impostazioni → Spiagge e dintorni); absent = the Rena Bianca photo */
+    introPhotos?: Photo[];
     factsVerified: boolean;
     googleReviewUrl: string;
   };
@@ -364,9 +366,11 @@ export interface Settings {
     /** what the price includes */
     board: 'room_only' | 'breakfast';
     /** the town's tax per adult and night, paid at the hotel (lib/tourist-tax.ts) */
-    touristTax?: { enabled: boolean; amount: number; from: string; to: string; maxNights: number };
+    touristTax?: { enabled: boolean; amount: number; from: string; to: string; maxNights: number; cash?: boolean };
     /** "Aumento prezzi online": card prices on the site + this percent, cash unchanged (lib/online-price.ts) */
     onlineMarkup?: { enabled: boolean; percent: number };
+    /** "Supplementi": optional extras paid at the hotel (lib/extras.ts); absent = the suggested ones, all off */
+    extras?: import('./extras').Extra[];
   };
   stripeConnect: {
     accountId: string | null;

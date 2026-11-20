@@ -1,7 +1,6 @@
 import 'server-only';
 import fs from 'node:fs';
 import path from 'node:path';
-import { EXPERIENCES } from '@/content/experiences';
 import { DATA_DIR } from './db/store';
 
 export interface PlaceRoute {
@@ -76,18 +75,23 @@ async function fetchRoute(from: { lat: number; lng: number }, to: { lat: number;
   }
 }
 
-/** Road / footpath from the hotel to every place: walking under ~1.8 km, otherwise by car. */
-export async function placeRoutes(hotel: { lat: number; lng: number }): Promise<Record<string, PlaceRoute | null>> {
+type Spot = { id: string; lat: number; lng: number };
+/** a place is cached with its position: a pin the owner moves gets its new road */
+const spotKey = (p: Spot) => `${p.id}@${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
+const byId = (spots: Spot[], all: Record<string, PlaceRoute | null>) => Object.fromEntries(spots.map((p) => [p.id, all[spotKey(p)] ?? null]));
+
+/** Road / footpath from the hotel to every place on the site (also the ones the owner added): walking under ~1.8 km, otherwise by car. */
+export async function placeRoutes(hotel: { lat: number; lng: number }, spots: Spot[]): Promise<Record<string, PlaceRoute | null>> {
   const key = `${hotel.lat.toFixed(5)},${hotel.lng.toFixed(5)}`;
   const cache = load();
-  if (cache[key] && EXPERIENCES.every((p) => p.id in cache[key]!)) return cache[key]!;
+  if (cache[key] && spots.every((p) => spotKey(p) in cache[key]!)) return byId(spots, cache[key]!);
   if (g.__lancoraRoutesBusy) await g.__lancoraRoutesBusy;
   const run = (async () => {
     const out: Record<string, PlaceRoute | null> = { ...(cache[key] ?? {}) };
     await Promise.all(
-      EXPERIENCES.filter((p) => !(p.id in out)).map(async (p) => {
+      spots.filter((p) => !(spotKey(p) in out)).map(async (p) => {
         const mode = straightKm(hotel, p) < 1.8 ? 'foot' : 'car';
-        out[p.id] = await fetchRoute(hotel, p, mode);
+        out[spotKey(p)] = await fetchRoute(hotel, p, mode);
       }),
     );
     // keep failures out of the cache so they are retried next time
@@ -97,7 +101,7 @@ export async function placeRoutes(hotel: { lat: number; lng: number }): Promise<
   })();
   g.__lancoraRoutesBusy = run;
   try {
-    return await run;
+    return byId(spots, await run);
   } finally {
     g.__lancoraRoutesBusy = null;
   }

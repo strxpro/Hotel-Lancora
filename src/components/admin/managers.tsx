@@ -6,7 +6,7 @@ import type { MonthPrice } from '@/lib/period-prices';
 import { addDays, fmtDate, fmtDateTime, todayISO } from '@/lib/dates';
 import { cancelDeadline, cancelFeeAmount, cancelText } from '@/lib/cancellation';
 import { cn, money } from '@/lib/utils';
-import { TAX_DEFAULT, touristTaxFor, type TouristTax } from '@/lib/tourist-tax';
+import { TAX_DEFAULT, taxNote, touristTaxFor, type TouristTax } from '@/lib/tourist-tax';
 import { Badge, Button, Card, Dialog, Empty, Field, NumInput, Segmented, StickyBar, Toggle, useAction } from './ui';
 import { NiceSelect } from './nice-select';
 import { removeRatePeriodAction, saveRatePeriodAction } from '@/app/admin/actions/rooms';
@@ -448,7 +448,7 @@ function DayMonth({ value, onChange, disabled, label }: { value: string; onChang
   );
 }
 
-export function PricingRulesForm({ initial, cashPercent, canEdit }: { initial: { singleUsePercent: number; board: 'room_only' | 'breakfast'; touristTax?: TouristTax; onlineMarkup: { enabled: boolean; percent: number } }; cashPercent: number; canEdit: boolean }) {
+export function PricingRulesForm({ initial, cashPercent, canEdit, part = 'all' }: { initial: { singleUsePercent: number; board: 'room_only' | 'breakfast'; touristTax?: TouristTax; onlineMarkup: { enabled: boolean; percent: number } }; cashPercent: number; canEdit: boolean; part?: 'all' | 'rules' | 'tax' }) {
   const [f, setF] = useState({ ...initial, touristTax: initial.touristTax ?? TAX_DEFAULT });
   const mk = f.onlineMarkup;
   const setMk = (patch: Partial<typeof mk>) => setF({ ...f, onlineMarkup: { ...mk, ...patch } });
@@ -461,7 +461,9 @@ export function PricingRulesForm({ initial, cashPercent, canEdit }: { initial: {
   const { run, pending } = useAction();
   const sample = 100;
   return (
-    <Card title="Tariffe e sconti">
+    <Card title={part === 'tax' ? 'Tassa di soggiorno' : 'Tariffe e sconti'}>
+      {part !== 'tax' && (
+      <>
       <p className="mb-5 text-sm text-charcoal/80">Regole che valgono per tutte le camere. Cambi qui e il sito, la ricerca e il riepilogo di prenotazione usano subito i nuovi prezzi.</p>
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-line bg-ivory p-4">
@@ -534,7 +536,10 @@ export function PricingRulesForm({ initial, cashPercent, canEdit }: { initial: {
         )}
         <p className="mt-3 text-[0.75rem] text-charcoal/70">{mk.enabled && mk.percent > 0 ? `Acceso: sul sito ogni prezzo con carta è più alto del ${mk.percent}% (camere, ricerca, prenotazione, chat).` : 'Spento: sul sito si vedono esattamente i prezzi che scrivi.'}</p>
       </div>
-      <div id="tassa" className="mt-4 scroll-mt-28 rounded-2xl border border-line bg-ivory p-4" data-testid="tourist-tax">
+      </>
+      )}
+      {part !== 'rules' && (
+      <div id="tassa" className={cn('scroll-mt-28 rounded-2xl border border-line bg-ivory p-4', part !== 'tax' && 'mt-4')} data-testid="tourist-tax">
         <div className="flex flex-wrap items-center gap-3">
           <p className="flex flex-1 items-center gap-2 text-sm font-semibold text-navy">
             <Landmark className="h-4 w-4 text-gold-2" /> Tassa di soggiorno
@@ -566,10 +571,34 @@ export function PricingRulesForm({ initial, cashPercent, canEdit }: { initial: {
             </label>
           </div>
         )}
+        {tax.enabled && (
+          <label className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-line bg-white px-3 py-2.5 text-sm">
+            <span className="flex items-center gap-2 text-navy">
+              <Banknote className="h-4 w-4 shrink-0 text-gold-2" />
+              <span>
+                Si paga a parte, in contanti
+                <span className="block text-[0.72rem] text-mist">Il sito lo scrive accanto al totale, quando l’ospite paga.</span>
+              </span>
+            </span>
+            <Toggle checked={tax.cash !== false} disabled={!canEdit} onChange={(v) => setTax({ cash: v })} label="Si paga in contanti" />
+          </label>
+        )}
         <p className="mt-3 text-[0.75rem] text-charcoal/70">
-          {tax.enabled ? `Dal ${mdLabel(tax.from)} al ${mdLabel(tax.to)} · esempio: 2 adulti, 3 notti → ${money(exQuote?.total ?? 0, 'it', 2)} da pagare in hotel.` : 'Spenta: il sito non mostra nessuna tassa di soggiorno.'}
+          {tax.enabled ? `Dal ${mdLabel(tax.from)} al ${mdLabel(tax.to)} · esempio: 2 adulti, 3 notti → ${money(exQuote?.total ?? 0, 'it', 2)} da pagare in hotel${tax.cash !== false ? ', in contanti' : ''}.` : 'Spenta: il sito non mostra nessuna tassa di soggiorno.'}
         </p>
+        {tax.enabled && exQuote && (
+          <div className="mt-4 rounded-xl border border-dashed border-gold/50 bg-white/70 p-3">
+            <p className="text-[0.66rem] font-semibold uppercase tracking-[0.16em] text-mist">Così la vede l’ospite, sotto il totale</p>
+            <p className="mt-1.5 flex items-start gap-2 text-[0.8rem] leading-snug text-mist">
+              <Landmark className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold-2" />
+              <span>
+                <span className="font-semibold text-navy">+ Tassa di soggiorno {money(exQuote.total, 'it', 2)}</span> · {taxNote('it', tax.cash)} (2 adulti × {exQuote.nights} notti × {money(tax.amount, 'it', 2)})
+              </span>
+            </p>
+          </div>
+        )}
       </div>
+      )}
       {canEdit && (
         <Button className="mt-5" disabled={pending || !changed} onClick={() => run(() => savePricingAction(f))}>
           Salva tariffe

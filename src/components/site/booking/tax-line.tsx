@@ -1,6 +1,6 @@
 'use client';
 import { Landmark } from 'lucide-react';
-import { TAX_T, taxDetail, type TaxQuote } from '@/lib/tourist-tax';
+import { TAX_T, taxDetail, taxNote, type TaxQuote } from '@/lib/tourist-tax';
 import { money } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { useI18n } from '../providers';
@@ -16,7 +16,7 @@ export function TaxLine({ tax, className }: { tax: TaxQuote; className?: string 
         <span className="font-semibold text-navy">
           + {x.label} {money(tax.total, locale, 2)}
         </span>{' '}
-        · {x.note} <span className="whitespace-nowrap">({taxDetail(locale, tax, (n) => money(n, locale, 2))})</span>
+        · {taxNote(locale, tax.cash)} <span className="whitespace-nowrap">({taxDetail(locale, tax, (n) => money(n, locale, 2))})</span>
       </span>
     </p>
   );

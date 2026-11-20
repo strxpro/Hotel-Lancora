@@ -52,7 +52,7 @@ export default async function HomePage({ params, searchParams }: Props) {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <HomeExperience rooms={publicCards(db, locale)} initialQuery={q} initialResults={results} today={today} cashPercent={db.settings.payments.allowCashAtHotel ? db.settings.payments.cashDiscountPercent : 0} tax={db.settings.pricing?.touristTax?.enabled ? db.settings.pricing.touristTax : null}>
-        <IntroSection hotel={{ phone: hotel.phone, whatsapp: hotel.whatsapp, email: hotel.email }} />
+        <IntroSection hotel={{ phone: hotel.phone, whatsapp: hotel.whatsapp, email: hotel.email }} photos={hotel.introPhotos?.map((p) => ({ src: p.src, alt: p.alt }))} />
         <ReviewsSection reviews={reviews} rooms={reviewRooms} />
         <ExploreSection lat={hotel.lat} lng={hotel.lng} name={hotel.name} verified={hotel.addressVerified} />
         <ContactSection hotel={{ phone: hotel.phone, whatsapp: hotel.whatsapp, email: hotel.email }} />

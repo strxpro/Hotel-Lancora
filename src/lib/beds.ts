@@ -2,7 +2,8 @@ import type { BedKind, Locale } from './types';
 
 export const BED_KINDS: { kind: BedKind; sleeps: number; it: [string, string] }[] = [
   { kind: 'matrimoniale', sleeps: 2, it: ['letto matrimoniale', 'letti matrimoniali'] },
-  { kind: 'francese', sleeps: 2, it: ['letto alla francese', 'letti alla francese'] },
+  // the owner's "Matrimoniale · 1 persona" (a double bed sold to one guest): guests read "letto matrimoniale"
+  { kind: 'francese', sleeps: 1, it: ['letto matrimoniale', 'letti matrimoniali'] },
   { kind: 'singolo', sleeps: 1, it: ['letto singolo', 'letti singoli'] },
   { kind: 'divano_letto', sleeps: 2, it: ['divano letto', 'divani letto'] },
   { kind: 'castello', sleeps: 2, it: ['letto a castello', 'letti a castello'] },
@@ -10,26 +11,40 @@ export const BED_KINDS: { kind: BedKind; sleeps: number; it: [string, string] }[
 ];
 
 const NOUN: Record<Exclude<Locale, 'it'>, Record<BedKind, string>> = {
-  en: { matrimoniale: 'double bed', francese: 'small double bed', singolo: 'single bed', divano_letto: 'sofa bed', castello: 'bunk bed', culla: 'cot' },
-  pl: { matrimoniale: 'łóżko małżeńskie', francese: 'łóżko francuskie', singolo: 'łóżko pojedyncze', divano_letto: 'sofa z funkcją spania', castello: 'łóżko piętrowe', culla: 'łóżeczko dziecięce' },
-  de: { matrimoniale: 'Doppelbett', francese: 'Französisches Bett', singolo: 'Einzelbett', divano_letto: 'Schlafsofa', castello: 'Etagenbett', culla: 'Kinderbett' },
-  fr: { matrimoniale: 'lit double', francese: 'petit lit double', singolo: 'lit simple', divano_letto: 'canapé-lit', castello: 'lits superposés', culla: 'lit bébé' },
-  es: { matrimoniale: 'cama de matrimonio', francese: 'cama francesa', singolo: 'cama individual', divano_letto: 'sofá cama', castello: 'litera', culla: 'cuna' },
+  en: { matrimoniale: 'double bed', francese: 'double bed', singolo: 'single bed', divano_letto: 'sofa bed', castello: 'bunk bed', culla: 'cot' },
+  pl: { matrimoniale: 'łóżko małżeńskie', francese: 'łóżko małżeńskie', singolo: 'łóżko pojedyncze', divano_letto: 'sofa z funkcją spania', castello: 'łóżko piętrowe', culla: 'łóżeczko dziecięce' },
+  de: { matrimoniale: 'Doppelbett', francese: 'Doppelbett', singolo: 'Einzelbett', divano_letto: 'Schlafsofa', castello: 'Etagenbett', culla: 'Kinderbett' },
+  fr: { matrimoniale: 'lit double', francese: 'lit double', singolo: 'lit simple', divano_letto: 'canapé-lit', castello: 'lits superposés', culla: 'lit bébé' },
+  es: { matrimoniale: 'cama de matrimonio', francese: 'cama de matrimonio', singolo: 'cama individual', divano_letto: 'sofá cama', castello: 'litera', culla: 'cuna' },
+};
+
+/** The same beds, kind by kind (a double for one guest is not the same as a double for two). */
+export const sameBeds = (a: BedConfig, b: BedConfig) => {
+  const key = (c: BedConfig) => JSON.stringify(BED_KINDS.map((k) => c.filter((x) => x.kind === k.kind).reduce((s, x) => s + x.count, 0)));
+  return key(a) === key(b);
 };
 
 export type BedConfig = { kind: BedKind; count: number }[];
 
 /** "1 letto matrimoniale + 1 letto singolo" — in the visitor's language. */
 export function bedsText(config: BedConfig, locale: Locale = 'it'): string {
-  const parts = BED_KINDS.flatMap((b) => {
-    const n = config.find((c) => c.kind === b.kind)?.count ?? 0;
-    if (n <= 0) return [];
-    if (locale === 'it') return [`${n} ${n === 1 ? b.it[0] : b.it[1]}`];
-    const noun = NOUN[locale][b.kind];
-    if (locale === 'en') return [`${n} ${n === 1 ? noun : `${noun}s`}`];
-    return [n === 1 ? `1 ${noun}` : `${n}× ${noun}`];
-  });
-  return parts.join(' + ');
+  // beds the guest reads the same way (a double for one, a double for two) are counted together
+  const seen = new Map<string, { n: number; one: string; many: string }>();
+  for (const b of BED_KINDS) {
+    const n = config.filter((c) => c.kind === b.kind).reduce((s, c) => s + c.count, 0);
+    if (n <= 0) continue;
+    const one = locale === 'it' ? b.it[0] : NOUN[locale][b.kind];
+    const many = locale === 'it' ? b.it[1] : NOUN[locale][b.kind];
+    const cur = seen.get(one);
+    seen.set(one, { n: (cur?.n ?? 0) + n, one, many });
+  }
+  return [...seen.values()]
+    .map(({ n, one, many }) => {
+      if (locale === 'it') return `${n} ${n === 1 ? one : many}`;
+      if (locale === 'en') return `${n} ${n === 1 ? one : `${one}s`}`;
+      return n === 1 ? `1 ${one}` : `${n}× ${one}`;
+    })
+    .join(' + ');
 }
 
 export const bedsCountOf = (config: BedConfig) => Math.max(1, config.filter((c) => c.kind !== 'culla').reduce((s, c) => s + c.count, 0));

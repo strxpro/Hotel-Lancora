@@ -9,6 +9,7 @@ import { publicCards } from '@/server/public-data';
 import { publishableKey, simulationAllowed, stripeMode, cardPaymentsReady } from '@/server/payments/stripe';
 import { releaseExpiredHolds } from '@/server/bookings';
 import { BookingFlow } from '@/components/site/booking/booking-flow';
+import { activeExtras, extraName } from '@/lib/extras';
 import { queryFromParams } from '@/components/site/booking/query';
 
 type Props = { params: Promise<{ locale: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
@@ -51,6 +52,7 @@ export default async function BookingPage({ params, searchParams }: Props) {
             stripeKey={publishableKey()}
             cash={{ enabled: p.allowCashAtHotel, percent: p.cashDiscountPercent, guarantee: p.cardGuarantee === true && cardPaymentsReady(db) }}
             online={(p.allowOnline !== false || !p.allowCashAtHotel) && (cardPossible || !p.allowCashAtHotel)}
+            extras={activeExtras(db.settings.pricing?.extras).map((e) => ({ id: e.id, name: extraName(e, locale), price: e.price, unit: e.unit }))}
             times={{ checkInFrom: db.settings.hotel.checkInFrom, checkInTo: db.settings.hotel.checkInTo, checkOutBy: db.settings.hotel.checkOutBy, rules: ruleLines(houseRules(db.settings), locale) }}
           />
         </div>

@@ -16,6 +16,8 @@ const PAGES: { title: string; href: string; words: string; perm?: Parameters<typ
   { title: 'Camere', href: '/admin/camere', words: 'camere stanze foto letti' },
   { title: 'Aggiungi camera', href: '/admin/camere/nuova', words: 'aggiungi nuova camera' },
   { title: 'Prezzi', href: '/admin/prezzi', words: 'prezzi tariffe stagione offerte uso singola', perm: 'prices.edit' },
+  { title: 'Tassa di soggiorno', href: '/admin/prezzi?tab=tassa', words: 'tassa soggiorno imposta comune turisti contanti', perm: 'prices.edit' },
+  { title: 'Supplementi', href: '/admin/prezzi?tab=supplementi', words: 'supplementi extra teli asciugamani colazione culla parcheggio ombrellone', perm: 'prices.edit' },
   { title: 'Clienti', href: '/admin/clienti', words: 'clienti ospiti rubrica email telefono' },
   { title: 'Pagamenti', href: '/admin/pagamenti', words: 'pagamenti incassi stripe carta contanti rimborsi bonifico penale cancellazione', perm: 'payments.manage' },
   { title: 'Messaggi', href: '/admin/messaggi', words: 'messaggi email outbox modelli' },

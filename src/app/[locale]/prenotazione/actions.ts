@@ -10,6 +10,8 @@ import { cardPaymentsReady, createCheckoutSession, payoutDestination, publishabl
 import { startCardCheckout } from '@/server/payments/card';
 import { clean, ipOf, rateLimit, requestOrigin } from '@/server/security';
 import { isLocale, localePath } from '@/lib/i18n/config';
+import { activeExtras, extrasForReception } from '@/lib/extras';
+import { diffDays } from '@/lib/dates';
 
 const Input = z.object({
   roomId: z.string().min(1).max(64),
@@ -27,12 +29,22 @@ const Input = z.object({
   terms: z.literal(true),
   marketing: z.boolean(),
   promoCode: z.string().max(30).nullable(),
+  /** Supplementi the guest ticked (paid at the hotel): ids, prices are read from the settings */
+  extras: z.array(z.string().max(40)).max(24).optional(),
   locale: z.enum(['it', 'en', 'pl', 'de', 'fr', 'es']).optional(),
 });
 
 export type ReservationResult =
   | { ok: true; bookingId: string; token: string; code: string; dueNow: number; total: number; holdExpiresAt: string; payment: 'stripe' | 'simulated' }
   | { ok: false; error: string; code?: string };
+
+/** The guest's request plus the line of the ticked extras, priced here from the hotel's own list. */
+function withExtras(text: string, ids: string[] | undefined, checkIn: string, checkOut: string, guests: number): string {
+  if (!ids?.length) return text;
+  const chosen = activeExtras(readDb().settings.pricing?.extras).filter((e) => ids.includes(e.id));
+  const line = extrasForReception(chosen, diffDays(checkIn, checkOut), guests);
+  return [text, line].filter(Boolean).join('\n\n');
+}
 
 async function ip(): Promise<string> {
   const h = await headers();
@@ -55,7 +67,7 @@ export async function createReservation(raw: unknown): Promise<ReservationResult
       children: d.children,
       childrenAges: d.childrenAges,
       guest: { firstName: clean(d.firstName, 60), lastName: clean(d.lastName, 60), email: d.email.toLowerCase(), phone: clean(d.phone, 30), ...(d.locale ? { lang: d.locale } : {}) },
-      specialRequests: clean(d.specialRequests, 1000),
+      specialRequests: withExtras(clean(d.specialRequests, 1000), d.extras, d.checkIn, d.checkOut, d.adults + d.children),
       consents: { privacy: true, terms: true, marketing: d.marketing },
       promoCode: d.promoCode ? clean(d.promoCode, 30) : null,
     });

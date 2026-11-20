@@ -357,7 +357,7 @@ export function StayTimesCard({ hotel, tax }: { hotel: Settings['hotel']; tax?: 
           ))}
         </div>
         <p className="mt-3 text-xs text-mist">Esempio con date di prova: sul sito ci sono le date scelte dall’ospite.</p>
-        <a href="/admin/prezzi#tassa" className="mt-4 flex items-center gap-3 rounded-2xl border border-line bg-ivory px-4 py-3 transition-colors hover:border-navy">
+        <a href="/admin/prezzi?tab=tassa" className="mt-4 flex items-center gap-3 rounded-2xl border border-line bg-ivory px-4 py-3 transition-colors hover:border-navy">
           <span className="text-xl" aria-hidden="true">🏛️</span>
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-semibold text-navy">Tassa di soggiorno</span>

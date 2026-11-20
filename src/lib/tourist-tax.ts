@@ -15,9 +15,11 @@ export interface TouristTax {
   to: string;
   /** nights that pay at most (0 = no limit) */
   maxNights: number;
+  /** paid separately at the hotel in cash (the site says so); absent = yes */
+  cash?: boolean;
 }
 
-export const TAX_DEFAULT: TouristTax = { enabled: false, amount: 2, from: '06-01', to: '09-30', maxNights: 0 };
+export const TAX_DEFAULT: TouristTax = { enabled: false, amount: 2, from: '06-01', to: '09-30', maxNights: 0, cash: true };
 
 export function inTaxSeason(date: string, from: string, to: string): boolean {
   const md = date.slice(5);
@@ -29,6 +31,8 @@ export interface TaxQuote {
   nights: number;
   adults: number;
   perNight: number;
+  /** paid in cash at the hotel */
+  cash: boolean;
 }
 
 /** What the guests of a stay pay at the hotel (null when nothing is due). */
@@ -37,18 +41,21 @@ export function touristTaxFor(t: TouristTax | undefined | null, checkIn: string,
   let nights = eachNight(checkIn, checkOut).filter((d) => inTaxSeason(d, t.from, t.to)).length;
   if (t.maxNights > 0) nights = Math.min(nights, t.maxNights);
   if (!nights) return null;
-  return { total: Math.round(nights * adults * t.amount * 100) / 100, nights, adults, perNight: t.amount };
+  return { total: Math.round(nights * adults * t.amount * 100) / 100, nights, adults, perNight: t.amount, cash: t.cash !== false };
 }
 
-type TaxText = { label: string; note: string; detail: string };
+type TaxText = { label: string; note: string; noteCash: string; detail: string };
 export const TAX_T: Record<Locale, TaxText> = {
-  it: { label: 'Tassa di soggiorno', note: 'non inclusa, si paga in hotel', detail: '{adults} adulti × {nights} notti × {amount}' },
-  en: { label: 'Tourist tax', note: 'not included, paid at the hotel', detail: '{adults} adults × {nights} nights × {amount}' },
-  pl: { label: 'Opłata miejscowa', note: 'nie wliczona, płatna w hotelu', detail: '{adults} dor. × {nights} noce × {amount}' },
-  de: { label: 'Kurtaxe', note: 'nicht inbegriffen, im Hotel zu zahlen', detail: '{adults} Erw. × {nights} Nächte × {amount}' },
-  fr: { label: 'Taxe de séjour', note: 'non incluse, à payer à l’hôtel', detail: '{adults} adultes × {nights} nuits × {amount}' },
-  es: { label: 'Tasa turística', note: 'no incluida, se paga en el hotel', detail: '{adults} adultos × {nights} noches × {amount}' },
+  it: { label: 'Tassa di soggiorno', note: 'non inclusa, si paga in hotel', noteCash: 'non inclusa · si paga a parte in hotel, in contanti', detail: '{adults} adulti × {nights} notti × {amount}' },
+  en: { label: 'Tourist tax', note: 'not included, paid at the hotel', noteCash: 'not included · paid separately at the hotel, in cash', detail: '{adults} adults × {nights} nights × {amount}' },
+  pl: { label: 'Opłata miejscowa', note: 'nie wliczona, płatna w hotelu', noteCash: 'nie wliczona · płatna osobno w hotelu, gotówką', detail: '{adults} dor. × {nights} noce × {amount}' },
+  de: { label: 'Kurtaxe', note: 'nicht inbegriffen, im Hotel zu zahlen', noteCash: 'nicht inbegriffen · separat im Hotel zu zahlen, in bar', detail: '{adults} Erw. × {nights} Nächte × {amount}' },
+  fr: { label: 'Taxe de séjour', note: 'non incluse, à payer à l’hôtel', noteCash: 'non incluse · à payer à part à l’hôtel, en espèces', detail: '{adults} adultes × {nights} nuits × {amount}' },
+  es: { label: 'Tasa turística', note: 'no incluida, se paga en el hotel', noteCash: 'no incluida · se paga aparte en el hotel, en efectivo', detail: '{adults} adultos × {nights} noches × {amount}' },
 };
+
+/** "non inclusa, si paga in hotel" — with "in contanti" when the hotel takes it in cash. */
+export const taxNote = (lang: Locale, cash: boolean | undefined) => (cash === false ? TAX_T[lang].note : TAX_T[lang].noteCash);
 
 export function taxDetail(lang: Locale, q: TaxQuote, money: (n: number) => string): string {
   return TAX_T[lang].detail.replace('{adults}', String(q.adults)).replace('{nights}', String(q.nights)).replace('{amount}', money(q.perNight));

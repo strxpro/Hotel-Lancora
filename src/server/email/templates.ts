@@ -3,7 +3,7 @@ import { diffDays, fmtDateLong, HOTEL_TZ, intlLocale } from '@/lib/dates';
 import { titleWithoutNumber } from '@/lib/room-number';
 import { money } from '@/lib/utils';
 import { cancelText } from '@/lib/cancellation';
-import { TAX_T, taxDetail, touristTaxFor } from '@/lib/tourist-tax';
+import { TAX_T, taxDetail, taxNote, touristTaxFor } from '@/lib/tourist-tax';
 import { guestLang, isLocaleCode } from '@/lib/guest-lang';
 
 export interface EmailContext {
@@ -197,7 +197,7 @@ function summary(b: Booking, room: Room | null, settings: Settings, lang: Locale
     [s.paid, money(b.amountPaid, lang, 2)],
   ];
   const tax = b.status === 'cancelled' ? null : touristTaxFor(settings.pricing?.touristTax, b.checkIn, b.checkOut, b.adults);
-  if (tax) rows.push([TAX_T[lang].label, `${money(tax.total, lang, 2)} · ${TAX_T[lang].note} (${taxDetail(lang, tax, (n) => money(n, lang, 2))})`]);
+  if (tax) rows.push([TAX_T[lang].label, `${money(tax.total, lang, 2)} · ${taxNote(lang, tax.cash)} (${taxDetail(lang, tax, (n) => money(n, lang, 2))})`]);
   return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 6px;border-top:1px solid #E7D9C1;">${rows
     .map(([k, v]) => `<tr><td style="padding:11px 0;border-bottom:1px solid #E7D9C1;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#8A8F90;width:38%;">${esc(k)}</td><td style="padding:11px 0;border-bottom:1px solid #E7D9C1;font-size:15px;color:#10283D;">${esc(v)}</td></tr>`)
     .join('')}</table>`;

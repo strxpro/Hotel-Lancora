@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword } from '@/server/auth/password';
 import { issueSession } from '@/server/auth/login';
 import { readDb } from '@/server/db/store';
 import { rateLimit } from '@/server/security';
+import { EXTRA_PRESETS } from '@/lib/extras';
 
 /** Prezzi → Tariffe e sconti: uso singola, trattamento. */
 export async function savePricingAction(raw: unknown) {
@@ -16,7 +17,7 @@ export async function savePricingAction(raw: unknown) {
       .object({
         singleUsePercent: z.number().min(0).max(60),
         board: z.enum(['room_only', 'breakfast']),
-        touristTax: z.object({ enabled: z.boolean(), amount: z.number().min(0).max(20), from: md, to: md, maxNights: z.number().int().min(0).max(60) }).optional(),
+        touristTax: z.object({ enabled: z.boolean(), amount: z.number().min(0).max(20), from: md, to: md, maxNights: z.number().int().min(0).max(60), cash: z.boolean().optional() }).optional(),
         onlineMarkup: z.object({ enabled: z.boolean(), percent: z.number().min(0).max(20) }).optional(),
       })
       .parse(raw);
@@ -27,6 +28,34 @@ export async function savePricingAction(raw: unknown) {
       audit(db, u.name, 'settings', 'pricing', null, `Uso singola −${p.singleUsePercent}% · ${p.board === 'room_only' ? 'solo pernottamento' : 'con colazione'}${t ? ` · tassa di soggiorno ${t.enabled ? `€ ${t.amount} a persona a notte dal ${t.from} al ${t.to}${t.maxNights ? `, max ${t.maxNights} notti` : ''}` : 'spenta'}` : ''}${m ? ` · prezzi online ${m.enabled && m.percent > 0 ? `+${m.percent}%` : 'senza aumento'}` : ''}`);
     });
   }, 'Tariffe salvate: i prezzi del sito sono già aggiornati.');
+}
+
+const ExtraSchema = z.object({
+  id: z.string().regex(/^[a-z0-9-]{1,40}$/),
+  name: z.partialRecord(z.enum(['it', 'en', 'pl', 'de', 'fr', 'es']), z.string().trim().max(80)),
+  price: z.number().min(0).max(1000),
+  unit: z.enum(['stay', 'night', 'person', 'person_night']),
+  enabled: z.boolean(),
+  preset: z.boolean().optional(),
+});
+
+/** Prezzi → Supplementi: the extras guests can add (paid at the hotel). Saved by itself as the owner changes them. */
+export async function saveExtrasAction(raw: unknown) {
+  return act('prices.edit', (u) => {
+    const list = z.array(ExtraSchema).max(24).parse(raw);
+    if (new Set(list.map((e) => e.id)).size !== list.length) throw new UserError('Due supplementi hanno lo stesso codice: ricarica la pagina e riprova.');
+    if (list.some((e) => e.enabled && !(e.name.it ?? '').trim())) throw new UserError('Ogni supplemento acceso ha bisogno di un nome.');
+    // a renamed suggestion keeps only the Italian name (the built-in translations were for the old name)
+    const clean = list.map((e) => {
+      const p = EXTRA_PRESETS.find((x) => x.id === e.id);
+      return p && e.preset && p.name.it !== e.name.it ? { ...e, name: { it: e.name.it }, preset: false } : e;
+    });
+    mutate((db) => {
+      db.settings.pricing = { singleUsePercent: 20, board: 'room_only', ...db.settings.pricing, extras: clean };
+      const on = clean.filter((e) => e.enabled);
+      audit(db, u.name, 'settings', 'pricing', null, on.length ? `Supplementi sul sito: ${on.map((e) => `${e.name.it} € ${e.price}`).join(', ')}` : 'Supplementi: nessuno sul sito');
+    });
+  }, 'Salvato.');
 }
 
 export async function savePaymentsAction(raw: unknown) {
@@ -186,6 +215,18 @@ export async function savePlacesAction(raw: unknown) {
     });
     translatePlacesLater(changed);
   }, 'Salvato: il sito mostra già i luoghi aggiornati.');
+}
+
+/** Impostazioni → Spiagge e dintorni → the photos of the home section “A 300 metri dal mare” (saved by themselves). */
+export async function saveIntroPhotosAction(raw: unknown) {
+  return act('settings.edit', (u) => {
+    const list = z.array(PlacePhoto).max(12).parse(raw);
+    mutate((db) => {
+      if (list.length) db.settings.hotel.introPhotos = list;
+      else delete db.settings.hotel.introPhotos;
+      audit(db, u.name, 'update', 'settings', null, list.length ? `Foto della sezione “300 metri dal mare”: ${list.length}` : 'Foto della sezione “300 metri dal mare”: tornata quella originale');
+    });
+  }, 'Salvato.');
 }
 
 /** Back to the site's original places (photos and texts). */

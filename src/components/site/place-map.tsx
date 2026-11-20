@@ -2,12 +2,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { createPortal, flushSync } from 'react-dom';
-import { animate, AnimatePresence, motion } from 'motion/react';
+import { animate, AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Car, Expand, Footprints, Hand, Minus, Navigation, Plus, Scan, Ship, X } from 'lucide-react';
 import { COAST } from '@/content/coast';
 import { MAP_T } from '@/lib/i18n/reviews-dict';
 import { PhotoMorph } from './photo-morph';
 import { cn } from '@/lib/utils';
+import { roundedPath } from '@/lib/route-path';
 import { useI18n, useLenis, usePlaces } from './providers';
 
 const EASE = [0.22, 0.61, 0.12, 1] as const;
@@ -115,6 +116,7 @@ export function PlaceMap({ hotel, active: activeProp, onSelect, tone = 'light', 
   const [full, setFull] = useState(false);
   const [touched, setTouched] = useState(false);
   const routes = useRoutes();
+  const still = useReducedMotion();
   const mt = MAP_T[locale];
   const H = useMemo(() => proj(hotel.lat, hotel.lng), [hotel.lat, hotel.lng]);
   const pts = useMemo(() => places.map((p) => proj(p.lat, p.lng)), [places]);
@@ -342,7 +344,9 @@ export function PlaceMap({ hotel, active: activeProp, onSelect, tone = 'light', 
   const curPt = active !== null && active !== undefined ? pts[active] : null;
   const dist = cur ? km(hotel, cur) : 0;
   const route = cur ? (routes?.[cur.id] ?? null) : null;
-  const routeD = route ? route.coords.map(([la, ln], i) => { const q = proj(la, ln); return `${i ? 'L' : 'M'}${q.x.toFixed(2)} ${q.y.toFixed(2)}`; }).join('') : null;
+  // the real streets, with the bends rounded like a road (≈ 28 m curves) and tiny wiggles merged
+  const routeD = route ? roundedPath(route.coords.map(([la, ln]) => proj(la, ln)), (28 * K) / 111320, (3 * K) / 111320) : null;
+  const px = view.w / Math.max(1, size.w);
   const ferry = cur?.id === 'bonifacio';
   const gallery = cur ? cur.gallery : [];
 
@@ -423,11 +427,25 @@ export function PlaceMap({ hotel, active: activeProp, onSelect, tone = 'light', 
           )}
           {cur && curPt && routeD && (
             <g key={`r-${cur.id}`}>
-              <motion.path d={routeD} fill="none" stroke="#ffffff" strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ duration: 1.1, ease: EASE }} />
-              <motion.path id={`route-${cur.id}`} d={routeD} fill="none" stroke={route?.mode === 'foot' ? '#7A8C6E' : '#B69562'} strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={route?.mode === 'foot' ? '1 7' : undefined} vectorEffect="non-scaling-stroke" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.1, ease: EASE }} />
-              <circle r={(6 * view.w) / Math.max(1, size.w)} fill="#10283D" stroke="#ffffff" strokeWidth={2} vectorEffect="non-scaling-stroke">
-                <animateMotion dur={`${Math.min(7, 2 + (route?.km ?? 1) / 3)}s`} repeatCount="indefinite" rotate="auto" path={routeD} />
-              </circle>
+              {/* drawn like a real road: a soft shadow, a white edge, the colour, then (on foot) little steps walking along */}
+              <motion.path d={routeD} fill="none" stroke={dark ? 'rgba(0,0,0,0.45)' : 'rgba(16,40,61,0.15)'} strokeWidth={14} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ duration: 1.4, ease: EASE }} />
+              <motion.path d={routeD} fill="none" stroke="#ffffff" strokeWidth={8.5} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ duration: 1.4, ease: EASE }} />
+              <motion.path id={`route-${cur.id}`} d={routeD} fill="none" stroke={route?.mode === 'foot' ? '#7A8C6E' : '#B69562'} strokeWidth={4.5} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.4, ease: EASE }} />
+              {route?.mode === 'foot' && (
+                <motion.path d={routeD} fill="none" stroke="#ffffff" strokeWidth={2.2 * px} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={`${0.01 * px} ${9 * px}`} initial={{ opacity: 0 }} animate={{ opacity: 0.95 }} transition={{ delay: 1.2, duration: 0.6 }}>
+                  {!still && <animate attributeName="stroke-dashoffset" from="0" to={String(-18 * px)} dur="1.2s" repeatCount="indefinite" />}
+                </motion.path>
+              )}
+              {/* the traveller: glides along the road, slows down at the place, rests a moment, starts again */}
+              {!still && (
+                <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.1, duration: 0.5 }}>
+                  <circle r={10 * px} fill={route?.mode === 'foot' ? '#7A8C6E' : '#B69562'} opacity={0.28}>
+                    <animate attributeName="r" values={`${8 * px};${13 * px};${8 * px}`} dur="1.8s" repeatCount="indefinite" />
+                  </circle>
+                  <circle r={5.5 * px} fill="#10283D" stroke="#ffffff" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                  <animateMotion dur={`${Math.min(9, 3 + (route?.km ?? 1) / 2.5).toFixed(1)}s`} repeatCount="indefinite" path={routeD} keyPoints="0;1;1" keyTimes="0;0.84;1" calcMode="spline" keySplines="0.42 0 0.35 1;0 0 1 1" />
+                </motion.g>
+              )}
             </g>
           )}
           {cur && curPt && !routeD && (

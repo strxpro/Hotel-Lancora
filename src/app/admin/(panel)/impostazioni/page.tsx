@@ -12,6 +12,8 @@ import { PageHeader } from '@/components/admin/ui';
 import { AccountCard, AuditCard, FaqCard, FloorsCard, GoLiveCard, HotelForm, HouseRulesCard, ServicesCard, StayTimesCard } from '@/components/admin/settings';
 import { houseRules } from '@/lib/house-rules';
 import { PlacesEditor } from '@/components/admin/places-editor';
+import { IntroPhotosCard } from '@/components/admin/intro-photos';
+import { MEDIA } from '@/content/media';
 import { placeList } from '@/server/places';
 import { cn } from '@/lib/utils';
 import { demoSummary } from '@/server/go-live';
@@ -95,7 +97,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <HouseRulesCard initial={houseRules(db.settings)} />
         </>
       )}
-      {tab === 'dintorni' && <PlacesEditor initial={placeList(db)} custom={Boolean(db.settings.places?.length)} />}
+      {tab === 'dintorni' && (
+        <>
+          <IntroPhotosCard initial={db.settings.hotel.introPhotos?.length ? db.settings.hotel.introPhotos : [{ id: 'rena-bianca', src: MEDIA.renaBianca.src, alt: MEDIA.renaBianca.alt, width: MEDIA.renaBianca.width, height: MEDIA.renaBianca.height, demo: true }]} />
+          <PlacesEditor initial={placeList(db)} custom={Boolean(db.settings.places?.length)} />
+        </>
+      )}
       {tab === 'servizi' && (
         <div className="grid gap-6 [&>*]:min-w-0 xl:grid-cols-2">
           <ServicesCard services={db.settings.services} />

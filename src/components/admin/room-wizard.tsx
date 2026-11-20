@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, ArrowRight, Baby, Banknote, BedDouble, BedSingle, Check, CreditCard, Crown, ExternalLink, Layers, Loader2, Minus, Plus, Sofa, Sparkles, Trash2, TriangleAlert, Users, UsersRound, Wand2, X } from 'lucide-react';
 import type { BedKind, FloorKey, Locale, Photo, Room, RoomStatus, RoomText, RoomType } from '@/lib/types';
-import { BED_KINDS, bedsCountOf, bedsText, parseBeds, sleepsOf, type BedConfig } from '@/lib/beds';
+import { BED_KINDS, bedsCountOf, bedsText, parseBeds, sameBeds, sleepsOf, type BedConfig } from '@/lib/beds';
 import { AMENITIES, AMENITY_KEYS } from '@/content/amenities';
 import { addDays, addMonths, fmtDate, todayISO } from '@/lib/dates';
 import { monthStarts, type MonthPrice } from '@/lib/period-prices';
@@ -31,8 +31,11 @@ const TYPES: { value: RoomType; label: string; icon: React.ComponentType<{ class
   { value: 'suite', label: 'Junior suite', icon: Crown },
 ];
 /** The usual beds of each typology: picked automatically, still editable below. */
-const TYPE_BEDS: Partial<Record<RoomType, { label: string; beds: { kind: 'matrimoniale' | 'singolo'; count: number }[] }[]>> = {
-  singola: [{ label: '1 letto singolo', beds: [{ kind: 'singolo', count: 1 }] }],
+const TYPE_BEDS: Partial<Record<RoomType, { label: string; beds: { kind: BedKind; count: number }[] }[]>> = {
+  singola: [
+    { label: '1 letto singolo', beds: [{ kind: 'singolo', count: 1 }] },
+    { label: 'Matrimoniale per 1 persona', beds: [{ kind: 'francese', count: 1 }] },
+  ],
   matrimoniale: [{ label: '1 letto matrimoniale', beds: [{ kind: 'matrimoniale', count: 1 }] }],
   doppia: [{ label: '2 letti separati', beds: [{ kind: 'singolo', count: 2 }] }],
   tripla: [
@@ -137,7 +140,7 @@ export function RoomWizard({ room, enableLower, canEditPrice, canDelete, transla
     setTouched((t) => (t.has(k) ? t : new Set(t).add(k)));
   };
   /** beds chosen from a typology preset: text, count and guests follow */
-  const applyBeds = (cfg: { kind: 'matrimoniale' | 'singolo'; count: number }[]) => {
+  const applyBeds = (cfg: { kind: BedKind; count: number }[]) => {
     setF((x) => ({ ...x, bedConfig: cfg, beds: bedsText(cfg, 'it'), bedsCount: bedsCountOf(cfg), maxGuests: Math.min(10, Math.max(1, sleepsOf(cfg))) }));
     setTouched((t) => new Set(t).add('beds').add('bedsCount'));
   };
@@ -400,7 +403,7 @@ export function RoomWizard({ room, enableLower, canEditPrice, canDelete, transla
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-mist">Letti tipici</span>
                     {TYPE_BEDS[f.type]!.map((p) => {
-                      const on = bedsText(p.beds, 'it') === bedsText(f.bedConfig, 'it');
+                      const on = sameBeds(p.beds, f.bedConfig);
                       return (
                         <button key={p.label} type="button" aria-pressed={on} onClick={() => applyBeds(p.beds)} className={cn('h-9 rounded-full border px-3.5 text-[0.8rem] transition-colors', on ? 'border-navy bg-navy text-ivory' : 'border-line bg-white text-navy hover:border-navy/40')}>
                           {p.label}
@@ -942,7 +945,7 @@ function RangeList({ title, hint, existing, pending, onAdd, extraLabel, extraNum
 
 const BED_UI: Record<BedKind, { label: string; note: string; icon: React.ComponentType<{ className?: string }> }> = {
   matrimoniale: { label: 'Matrimoniale', note: '2 persone', icon: BedDouble },
-  francese: { label: 'Alla francese', note: '1–2 persone, 140 cm', icon: BedDouble },
+  francese: { label: 'Matrimoniale', note: '1 persona', icon: BedDouble },
   singolo: { label: 'Singolo', note: '1 persona', icon: BedSingle },
   divano_letto: { label: 'Divano letto', note: 'fino a 2 persone', icon: Sofa },
   castello: { label: 'A castello', note: '2 persone', icon: Layers },

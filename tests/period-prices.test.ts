@@ -167,7 +167,7 @@ test('tourist tax: per adult and night, only in its season, paid at the hotel', 
   const { touristTaxFor, inTaxSeason } = await import('../src/lib/tourist-tax');
   const t = { enabled: true, amount: 2, from: '06-01', to: '09-30', maxNights: 0 };
   // 29 May → 3 June: nights 29, 30, 31 May (no tax) and 1, 2 June (tax) · 2 adults
-  assert.deepEqual(touristTaxFor(t, '2027-05-29', '2027-06-03', 2), { total: 8, nights: 2, adults: 2, perNight: 2 });
+  assert.deepEqual(touristTaxFor(t, '2027-05-29', '2027-06-03', 2), { total: 8, nights: 2, adults: 2, perNight: 2, cash: true });
   assert.equal(touristTaxFor(t, '2027-10-01', '2027-10-05', 2), null, 'out of season');
   assert.equal(touristTaxFor({ ...t, enabled: false }, '2027-07-01', '2027-07-05', 2), null, 'switched off');
   assert.equal(touristTaxFor({ ...t, maxNights: 7 }, '2027-07-01', '2027-07-15', 1)?.total, 14, 'at most 7 nights');

@@ -11,7 +11,7 @@ import { diffDays, fmtDateLong } from '@/lib/dates';
 import { money } from '@/lib/utils';
 import { readDb } from '@/server/db/store';
 import { smtpConfigured } from '@/server/events';
-import { TAX_T, taxDetail, touristTaxFor } from '@/lib/tourist-tax';
+import { TAX_T, taxDetail, taxNote, touristTaxFor } from '@/lib/tourist-tax';
 import { findBookingByToken } from '@/server/bookings';
 import { confirmFromCheckout } from '@/server/payments/confirm';
 import { completeCardSession } from '@/server/payments/card';
@@ -123,7 +123,7 @@ export default async function ConfirmPage({ params, searchParams }: Props) {
                 [t.booking.nights.other.replace('{n} ', ''), String(nights)],
                 [t.booking.total, money(b.total, locale, 2)],
                 [t.guest.paid, money(b.amountPaid, locale, 2)],
-                ...((tax) => (tax ? [[TAX_T[locale].label, `${money(tax.total, locale, 2)} · ${TAX_T[locale].note} (${taxDetail(locale, tax, (n) => money(n, locale, 2))})`]] : []))(b.status === 'cancelled' ? null : touristTaxFor(db.settings.pricing?.touristTax, b.checkIn, b.checkOut, b.adults)),
+                ...((tax) => (tax ? [[TAX_T[locale].label, `${money(tax.total, locale, 2)} · ${taxNote(locale, tax.cash)} (${taxDetail(locale, tax, (n) => money(n, locale, 2))})`]] : []))(b.status === 'cancelled' ? null : touristTaxFor(db.settings.pricing?.touristTax, b.checkIn, b.checkOut, b.adults)),
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-6 py-4">
                   <dt className="text-mist">{k}</dt>

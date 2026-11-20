@@ -3,7 +3,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft, Baby, Banknote, BedDouble, CalendarDays, Cigarette, Dog, Expand, Info, Layers, Maximize2, Moon, PartyPopper, Users, X } from 'lucide-react';
+import { ArrowLeft, Baby, Banknote, BedDouble, CalendarDays, Cigarette, Dog, Expand, Info, Layers, Maximize2, Moon, PackagePlus, PartyPopper, Users, X } from 'lucide-react';
+import { EXTRA_T } from '@/lib/extras';
+import type { SiteExtra } from '../booking/extras-picker';
 import type { RuleIcon, RuleLine } from '@/lib/house-rules';
 import { PricePair } from '../price-pair';
 import { TaxLine } from '../booking/tax-line';
@@ -54,7 +56,7 @@ type QuoteResponse = { available: boolean; reason: 'capacity' | 'occupied' | nul
 
 const GLANCE = { h: { opacity: 0, y: 10, scale: 0.96 }, v: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring' as const, stiffness: 380, damping: 28 } } };
 
-export function RoomDetail({ room, occupied, nightly = {}, similar, today, initialQuery, policies, reviews = [] }: { room: RoomDetailData; occupied: string[]; nightly?: Record<string, number>; similar: RoomCardData[]; today: string; initialQuery: StayQuery; policies: { checkInFrom: string; checkInTo: string; checkOutBy: string; cancellation: string; rules?: RuleLine[] }; reviews?: ReviewView[] }) {
+export function RoomDetail({ room, occupied, nightly = {}, similar, today, initialQuery, policies, reviews = [] }: { room: RoomDetailData; occupied: string[]; nightly?: Record<string, number>; similar: RoomCardData[]; today: string; initialQuery: StayQuery; policies: { checkInFrom: string; checkInTo: string; checkOutBy: string; cancellation: string; rules?: RuleLine[]; extras?: SiteExtra[] }; reviews?: ReviewView[] }) {
   const { t, locale, href } = useI18n();
   const P = PRICE_T[locale];
   const router = useRouter();
@@ -223,6 +225,22 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
                     </li>
                   ))}
                 </ul>
+              )}
+              {policies.extras && policies.extras.length > 0 && (
+                <div className="mt-8" data-testid="room-extras">
+                  <p className="label">{EXTRA_T[locale].title} · <span className="normal-case tracking-normal text-mist">{EXTRA_T[locale].note}</span></p>
+                  <ul className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                    {policies.extras.map((e) => (
+                      <li key={e.id} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-white px-4 py-3 text-[0.9rem] text-navy">
+                        <span className="flex items-center gap-3">
+                          <PackagePlus className="h-4 w-4 shrink-0 text-gold-2" />
+                          {e.name}
+                        </span>
+                        <span className="shrink-0 text-right text-[0.78rem] text-mist">{e.price > 0 ? <><strong className="font-semibold text-navy">{money(e.price, locale, 2)}</strong> {EXTRA_T[locale].unit[e.unit]}</> : EXTRA_T[locale].free}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </Reveal>
             <div className="mt-16">
