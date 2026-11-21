@@ -759,3 +759,29 @@ html[data-dock='1'] .float-label {
     font-size: max(16px, 1em) !important;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* the site's search bar: a navy frame like the "Prenota ora" button,  */
+/* with a soft gold light that runs round it                           */
+/* ------------------------------------------------------------------ */
+@property --sr-a {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+.search-ring {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(#fff, #fff) padding-box,
+    conic-gradient(from var(--sr-a), var(--color-navy) 0deg 220deg, #f1d9a2 290deg, var(--color-navy) 350deg) border-box;
+  animation: sr-run 6s linear infinite;
+}
+@media (min-width: 768px) {
+  .search-ring { border-width: 3px; }
+}
+@keyframes sr-run {
+  to { --sr-a: 360deg; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .search-ring { animation: none; }
+}

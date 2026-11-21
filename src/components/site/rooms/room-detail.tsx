@@ -7,7 +7,7 @@ import { ArrowLeft, Baby, Banknote, BedDouble, CalendarDays, Cigarette, Dog, Exp
 import { EXTRA_T } from '@/lib/extras';
 import type { SiteExtra } from '../booking/extras-picker';
 import type { RuleIcon, RuleLine } from '@/lib/house-rules';
-import { PricePair } from '../price-pair';
+import { PricePair, type PayWay } from '../price-pair';
 import { TaxLine } from '../booking/tax-line';
 import type { TaxQuote } from '@/lib/tourist-tax';
 import { PRICE_T } from '@/lib/i18n/price-dict';
@@ -63,6 +63,8 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
   const [query, setQuery] = useState<StayQuery>({ ...initialQuery, adults: Math.min(initialQuery.adults, room.maxGuests), children: Math.min(initialQuery.children, Math.max(0, room.maxGuests - initialQuery.adults)) });
   const [panel, setPanel] = useState<'guests' | null>(null);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  // card or cash, when the guest taps one of the two prices
+  const [way, setWay] = useState<PayWay | null>(null);
   const mainRef = useRef<HTMLDivElement>(null);
   const calRef = useRef<HTMLDivElement>(null);
   const guestsRef = useRef<HTMLButtonElement>(null);
@@ -108,6 +110,7 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
 
   const bookParams = queryToParams(query);
   bookParams.set('room', room.slug);
+  if (way) bookParams.set('pay', way);
   const nights = query.checkIn && query.checkOut ? diffDays(query.checkIn, query.checkOut) : 0;
   const facts = [
     { icon: Users, label: t.room.guests, value: plural(locale, room.maxGuests, t.rooms.upTo) },
@@ -296,7 +299,7 @@ export function RoomDetail({ room, occupied, nightly = {}, similar, today, initi
                           </span>
                           <span className="text-mist">{plural(locale, nights, t.booking.nights)}</span>
                         </p>
-                        <PricePair className="mt-3" size="lg" card={room.cardOk === false ? null : quote.quote.total} cash={cashTotal} />
+                        <PricePair className="mt-3" size="lg" card={room.cardOk === false ? null : quote.quote.total} cash={cashTotal} selected={way} onPick={setWay} />
                         {quote.touristTax && <TaxLine className="mt-3" tax={quote.touristTax} />}
                       </motion.div>
                     ) : (

@@ -51,3 +51,24 @@ test('only the owner may delete a booking', async () => {
   assert.equal(can('admin', 'bookings.delete'), true);
   assert.equal(can('staff', 'bookings.delete'), false);
 });
+
+test('"Indietro" on the payment step lets only the unpaid hold go', async () => {
+  const { readDb, mutate } = await import('../src/server/db/store');
+  const { releaseHold } = await import('../src/server/bookings');
+  const { documentIssues } = await import('../src/server/db/tables');
+  const [held, paid] = readDb().bookings;
+  mutate((d) => {
+    const h = d.bookings.find((x) => x.id === held!.id)!;
+    h.status = 'pending_payment';
+    h.holdExpiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+    d.bookings.find((x) => x.id === paid!.id)!.status = 'confirmed';
+  });
+  assert.equal(releaseHold(paid!.token), false, 'a confirmed booking is never let go');
+  assert.equal(releaseHold(held!.token), true);
+  const d = readDb();
+  assert.ok(!d.bookings.some((x) => x.id === held!.id), 'the hold is gone, the nights are free');
+  assert.ok(d.bookings.some((x) => x.id === paid!.id));
+  assert.equal(d.audit[0]?.action, 'hold_released');
+  assert.deepEqual(documentIssues(d).filter((i) => i.includes('collegate')), []);
+  assert.equal(releaseHold(held!.token), false, 'pressed twice: nothing more happens');
+});

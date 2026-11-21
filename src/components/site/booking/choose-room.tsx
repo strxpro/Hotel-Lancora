@@ -12,7 +12,7 @@ import { cn, money } from '@/lib/utils';
 import { useI18n } from '../providers';
 import { AmenityIcon } from '../amenity-icon';
 import { SearchBar } from './search-bar';
-import { PricePair } from '../price-pair';
+import { PricePair, type PayWay } from '../price-pair';
 import type { StayQuery } from './query';
 import { Stars } from '../reviews/reviews-ui';
 
@@ -36,6 +36,7 @@ export function ChooseRoom({
   selected,
   onPick,
   cashPercent,
+  method = null,
 }: {
   query: StayQuery;
   onQuery: (q: StayQuery) => void;
@@ -47,13 +48,16 @@ export function ChooseRoom({
   /** nearest stays with free rooms, when these dates have none */
   alternatives?: AvailabilityResponse['alternatives'];
   selected: string | null;
-  onPick: (slug: string) => void;
+  onPick: (slug: string, way?: PayWay) => void;
   cashPercent: number;
+  /** how the guest chose to pay (shown on the room already chosen) */
+  method?: PayWay | null;
 }) {
   const { t, locale } = useI18n();
   const hasDates = Boolean(query.checkIn && query.checkOut && available);
   const [sort, setSort] = useState<Sort>('best');
   const [picked, setPicked] = useState<string | null>(null);
+  const [pickedWay, setPickedWay] = useState<PayWay | null>(null);
   const [nudge, setNudge] = useState(0);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -70,14 +74,16 @@ export function ChooseRoom({
     return l;
   }, [list, sort, topId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pick = (slug: string) => {
+  const pick = (slug: string, way?: PayWay) => {
+    if (picked) return;
     if (!hasDates) {
       setNudge((n) => n + 1);
       barRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     setPicked(slug);
-    window.setTimeout(() => onPick(slug), 750);
+    setPickedWay(way ?? null);
+    window.setTimeout(() => onPick(slug, way), 750);
   };
 
   return (
@@ -252,7 +258,13 @@ export function ChooseRoom({
                           <p className="text-[0.6rem] uppercase tracking-[0.16em] text-mist">
                             {plural(locale, r.nights, t.booking.nights)} · {t.booking.pick.stayTotal}
                           </p>
-                          <PricePair className="mt-2 max-w-[22rem]" card={r.room.pay?.card === false ? null : price(r)} cash={cash ?? (r.room.pay?.card === false ? price(r) : null)} />
+                          <PricePair
+                            className="mt-2 max-w-[22rem]"
+                            card={r.room.pay?.card === false ? null : price(r)}
+                            cash={cash ?? (r.room.pay?.card === false ? price(r) : null)}
+                            selected={picked === r.room.slug ? pickedWay : selected === r.room.slug ? method : null}
+                            onPick={(way) => pick(r.room.slug, way)}
+                          />
                         </div>
                       ) : (
                         // no dates yet: the lowest night price, so the guest sees at once what a room costs

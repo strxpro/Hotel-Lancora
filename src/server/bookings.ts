@@ -510,6 +510,26 @@ export function releaseExpiredHolds(): number {
   return expired.length;
 }
 
+/**
+ * "Indietro" on the payment step: the room held for this guest is let go (nothing was paid yet), so the
+ * guest can change the details, the room or the dates and book again. Only a hold still waiting for
+ * payment goes; a booking already paid or confirmed is never touched.
+ */
+export function releaseHold(token: string): boolean {
+  return mutate((db) => {
+    const b = db.bookings.find((x) => x.token === token);
+    if (!b || b.status !== 'pending_payment') return false;
+    db.bookings = db.bookings.filter((x) => x.id !== b.id);
+    db.payments = db.payments.filter((p) => p.bookingId !== b.id);
+    db.outbox = db.outbox.filter((m) => m.bookingId !== b.id);
+    db.messages = db.messages.filter((m) => m.bookingId !== b.id);
+    for (const f of db.feedback) if (f.bookingId === b.id) f.bookingId = null;
+    db.notifications = db.notifications.filter((n) => !n.href?.includes(`id=${b.id}`));
+    audit(db, 'Sito web', 'hold_released', 'booking', null, `${b.code} · l’ospite è tornato indietro dal pagamento`);
+    return true;
+  });
+}
+
 const sweeper = globalThis as typeof globalThis & { __lancoraHoldTimer?: ReturnType<typeof setInterval> };
 /** Frees expired holds at the right minute instead of whenever someone next opens a page. */
 export function startHoldSweeper() {

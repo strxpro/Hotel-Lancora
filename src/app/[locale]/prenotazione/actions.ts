@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { cookies, headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
-import { BookingError, confirmPayAtHotel, confirmPayment, createWebsiteHold, paymentFailed, findBookingByToken } from '@/server/bookings';
+import { BookingError, confirmPayAtHotel, confirmPayment, createWebsiteHold, paymentFailed, findBookingByToken, releaseHold } from '@/server/bookings';
 import { mutate, readDb } from '@/server/db/store';
 import { queueEmail, smtpConfigured } from '@/server/events';
 import { CASH_COOKIE, CASH_PER_DAY, codeFor, codeMatches, maskEmail, readCashCookie, recentCashBookings, writeCashCookie } from '@/server/email-code';
@@ -278,6 +278,16 @@ export async function simulatePayment(token: string, outcome: 'success' | 'failu
     return { ok: true };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** "Indietro" on the payment step: lets the held room go, to come back with other details, room or dates. */
+export async function releaseHoldAction(token: string): Promise<{ ok: boolean }> {
+  try {
+    if (!rateLimit(`release:${await ip()}`, 40, 10 * 60_000)) return { ok: false };
+    return { ok: releaseHold(z.string().min(8).max(100).parse(token)) };
+  } catch {
+    return { ok: false };
   }
 }
 

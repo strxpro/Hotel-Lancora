@@ -115,7 +115,7 @@ export function SearchBar({
   /* ---------- phone: pill (dates · guests) + explicit "Cerca", opening a bottom sheet ---------- */
   const mobileUi = (
     <div ref={mobileRef} className={cn('w-full md:hidden', className)}>
-      <div className={cn('flex w-full items-center gap-1.5 rounded-full p-1.5 transition-[background-color,box-shadow] duration-500', glass ? 'bg-white shadow-[0_22px_60px_-18px_rgba(10,28,43,0.75)] ring-2 ring-gold/45' : 'border border-gold/35 bg-white shadow-[0_14px_40px_-24px_rgba(16,40,61,0.5)]')}>
+      <div className={cn('flex w-full items-center gap-1.5 rounded-full p-1.5 transition-[background-color,box-shadow] duration-500', glass ? 'search-ring shadow-[0_22px_60px_-18px_rgba(10,28,43,0.75)]' : 'search-ring shadow-[0_14px_40px_-24px_rgba(16,40,61,0.5)]')}>
         <button type="button" onClick={() => setPanel('mobile')} aria-haspopup="dialog" className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full py-1 pl-1.5 pr-2 text-left transition-colors active:bg-sand-2">
           <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold-2">
             <CalendarDays className="h-[1.1rem] w-[1.1rem]" strokeWidth={1.7} />
@@ -170,9 +170,9 @@ export function SearchBar({
           'relative hidden w-full items-stretch gap-1 rounded-full p-1.5 transition-[background-color,box-shadow,border-color] duration-700 ease-[var(--ease-lux)] md:flex',
           glass
             ? docked
-              ? 'border border-gold/40 bg-white shadow-[0_30px_70px_-26px_rgba(10,28,43,0.65)]'
-              : 'border-2 border-gold/45 bg-white shadow-[0_40px_100px_-34px_rgba(10,28,43,0.85)] ring-[6px] ring-white/20'
-            : 'border border-gold/35 bg-white shadow-[0_18px_50px_-30px_rgba(16,40,61,0.45)]',
+              ? 'search-ring shadow-[0_30px_70px_-26px_rgba(10,28,43,0.65)]'
+              : 'search-ring shadow-[0_40px_100px_-34px_rgba(10,28,43,0.85)] ring-[6px] ring-white/20'
+            : 'search-ring shadow-[0_18px_50px_-30px_rgba(16,40,61,0.45)]',
           className,
         )}
       >

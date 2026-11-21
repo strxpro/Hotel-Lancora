@@ -1,5 +1,6 @@
 'use client';
-import { Banknote, CreditCard } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Banknote, Check, CreditCard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from './providers';
 import { LiveMoney } from './live-money';
@@ -10,11 +11,14 @@ const SIZES = {
   lg: { card: 'text-[2.1rem]', cash: 'text-[2.4rem]' },
 } as const;
 
+export type PayWay = 'card' | 'cash';
+
 /**
  * The price with card and the price in cash at the hotel, side by side in the same style:
  * the cash amount is a touch bigger (it is the better price). Without cash, only the card price.
+ * With `onPick` the two prices are buttons: a tap chooses how to pay (the chosen one fills in).
  */
-export function PricePair({ card, cash, size = 'md', decimals = 0, className, dark = false }: { card: number | null; cash: number | null; size?: keyof typeof SIZES; decimals?: 0 | 2; className?: string; dark?: boolean }) {
+export function PricePair({ card, cash, size = 'md', decimals = 0, className, dark = false, selected = null, onPick }: { card: number | null; cash: number | null; size?: keyof typeof SIZES; decimals?: 0 | 2; className?: string; dark?: boolean; selected?: PayWay | null; onPick?: (way: PayWay) => void }) {
   const { t } = useI18n();
   const s = SIZES[size];
   const label = 'flex items-center gap-1.5 text-[0.62rem] font-semibold uppercase tracking-[0.16em]';
@@ -43,6 +47,14 @@ export function PricePair({ card, cash, size = 'md', decimals = 0, className, da
       </div>
     );
   }
+  if (onPick) {
+    return (
+      <div role="radiogroup" aria-label={t.booking.pay.method} className={cn('grid grid-cols-2 items-stretch gap-2', className)}>
+        <WayButton way="card" on={selected === 'card'} onPick={onPick} title={t.booking.pay.priceCard} amount={card} decimals={decimals} size={s.card} />
+        <WayButton way="cash" on={selected === 'cash'} onPick={onPick} title={t.booking.pay.priceCash} amount={cash} decimals={decimals} size={s.cash} />
+      </div>
+    );
+  }
   return (
     <div className={cn('grid grid-cols-2 items-end gap-2', className)}>
       <div className="min-w-0">
@@ -62,5 +74,57 @@ export function PricePair({ card, cash, size = 'md', decimals = 0, className, da
         </p>
       </div>
     </div>
+  );
+}
+
+/** One of the two prices as a button: navy when the card is chosen, green when cash is. */
+function WayButton({ way, on, onPick, title, amount, decimals, size }: { way: PayWay; on: boolean; onPick: (way: PayWay) => void; title: string; amount: number; decimals: 0 | 2; size: string }) {
+  const card = way === 'card';
+  const Icon = card ? CreditCard : Banknote;
+  return (
+    <motion.button
+      type="button"
+      role="radio"
+      aria-checked={on}
+      data-way={way}
+      onClick={(e) => {
+        e.stopPropagation();
+        onPick(way);
+      }}
+      whileHover={{ y: -2 }}
+      whileTap={{ scale: 0.95 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 26 }}
+      className={cn(
+        'group/way relative min-w-0 cursor-pointer rounded-2xl border px-3 py-2 text-left transition-[background-color,border-color,color,box-shadow] duration-300',
+        card
+          ? on
+            ? 'border-navy bg-navy text-ivory shadow-[0_16px_30px_-18px_rgba(16,40,61,0.85)]'
+            : 'border-line bg-white text-navy hover:border-navy/60 hover:shadow-[0_14px_28px_-20px_rgba(16,40,61,0.6)]'
+          : on
+            ? 'border-sage bg-sage text-ivory shadow-[0_16px_30px_-18px_rgba(63,90,53,0.85)]'
+            : 'border-sage/30 bg-sage/10 text-[#3f5a35] hover:border-sage hover:shadow-[0_14px_28px_-20px_rgba(63,90,53,0.6)]',
+      )}
+    >
+      <span className={cn('flex items-center gap-1.5 pr-5 text-[0.62rem] font-semibold uppercase tracking-[0.16em]', on ? 'text-ivory/85' : card ? 'text-mist' : 'text-sage')}>
+        <Icon className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{title}</span>
+      </span>
+      <span className={cn('serif mt-1 block truncate leading-none', size)}>
+        <LiveMoney value={amount} decimals={decimals} badge={false} />
+      </span>
+      {/* the round "chosen" mark, like a radio button */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          'absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full border transition-colors duration-300',
+          on ? cn('border-ivory bg-ivory', card ? 'text-navy' : 'text-sage') : card ? 'border-navy/25 group-hover/way:border-navy/60' : 'border-sage/50 group-hover/way:border-sage',
+        )}
+      >
+        {on && (
+          <motion.span initial={{ scale: 0, rotate: -40 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 500, damping: 18 }} className="flex">
+            <Check className="h-2.5 w-2.5" strokeWidth={3.5} />
+          </motion.span>
+        )}
+      </span>
+    </motion.button>
   );
 }

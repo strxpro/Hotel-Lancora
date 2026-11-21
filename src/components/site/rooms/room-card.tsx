@@ -31,6 +31,11 @@ export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 
   const bookParams = query ? queryToParams(query) : new URLSearchParams();
   bookParams.set('room', room.slug);
   const bookHref = href(`/prenotazione?${bookParams.toString()}`);
+  const bookWith = (way: 'card' | 'cash') => {
+    const p = new URLSearchParams(bookParams);
+    p.set('pay', way);
+    router.push(href(`/prenotazione?${p.toString()}`));
+  };
   const pct = result?.cashPercent ?? room.cashPercent ?? cashPercent;
   const cash = (n: number) => Math.round(n * (1 - pct / 100) * 100) / 100;
   const masonry = variant === 'masonry';
@@ -132,7 +137,7 @@ export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 
                 <p className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-mist">
                   {t.rooms.total} · {plural(locale, result.nights, t.booking.nights)}
                 </p>
-                <PricePair className="mt-2" size={masonry || list ? 'sm' : 'md'} card={result.total} cash={pct > 0 ? cash(result.total) : null} />
+                <PricePair className="relative z-[2] mt-2" size={masonry || list ? 'sm' : 'md'} card={result.total} cash={pct > 0 ? cash(result.total) : null} onPick={bookWith} />
                 <p className={cn('mt-1.5 text-[0.72rem] text-mist', list && 'hidden md:block')}>
                   {money(result.averageNight, locale)} {t.rooms.perNight} · {room.board === 'breakfast' ? rates.breakfast : rates.roomOnly}
                 </p>

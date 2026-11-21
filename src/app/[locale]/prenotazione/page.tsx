@@ -30,6 +30,8 @@ export default async function BookingPage({ params, searchParams }: Props) {
   const today = todayISO();
   const q = queryFromParams(sp, today);
   const roomParam = typeof sp.room === 'string' ? sp.room : null;
+  // a tap on "con carta" / "in contanti" of a room (home page, room page) comes with the way to pay
+  const payParam = sp.pay === 'cash' || sp.pay === 'card' ? sp.pay : null;
   const rooms = publicCards(db, locale);
   const p = db.settings.payments;
   // real site without Stripe: no pretend card payment, the guest pays at the hotel
@@ -42,11 +44,12 @@ export default async function BookingPage({ params, searchParams }: Props) {
         <h1 className="display mt-4 text-title text-navy">{t.booking.title}</h1>
         <div className="mt-12 md:mt-16">
           <BookingFlow
-            key={`${q.checkIn}|${q.checkOut}|${q.adults}|${q.children}|${roomParam}`}
+            key={`${q.checkIn}|${q.checkOut}|${q.adults}|${q.children}|${roomParam}|${payParam}`}
             today={today}
             initialQuery={q}
             rooms={rooms}
             initialRoomSlug={rooms.some((r) => r.slug === roomParam) ? roomParam : null}
+            initialMethod={payParam}
             payments={{ mode: p.mode, depositPercent: p.depositPercent, depositFixed: p.depositFixed, cancellationPolicy: p.cancellationPolicy, holdMinutes: p.holdMinutes, freeCancellationDays: p.freeCancellationDays, cancellationFee: p.cancellationFee }}
             provider={stripeMode() === 'off' ? 'simulated' : 'stripe'}
             stripeKey={publishableKey()}

@@ -8,7 +8,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from 'motion/react';
 import type { StripeEmbeddedCheckout } from '@stripe/stripe-js';
-import { AlertCircle, Banknote, Check, ChevronDown, Clock, CreditCard, FlaskConical, Lock, ShieldCheck, Tag } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Banknote, BedDouble, Check, ChevronDown, Clock, CreditCard, FlaskConical, Lock, Pencil, ShieldCheck, Tag, UserRound } from 'lucide-react';
 import type { AvailabilityResponse, RoomCardData, RoomResult } from '@/lib/room-card';
 import type { StayQuote } from '@/lib/availability';
 import { fmtDate, fmtDateLong, diffDays } from '@/lib/dates';
@@ -21,10 +21,11 @@ import { GuestSelector } from './guests';
 import { queryToParams, type StayQuery } from './query';
 import { ChooseRoom } from './choose-room';
 import { openLegal } from '../legal-dialog';
-import { createReservation, payAtHotel, sendCashCode, simulatePayment, startCardLater, startCashGuarantee, startStripeCheckout } from '@/app/[locale]/prenotazione/actions';
+import { createReservation, payAtHotel, releaseHoldAction, sendCashCode, simulatePayment, startCardLater, startCashGuarantee, startStripeCheckout } from '@/app/[locale]/prenotazione/actions';
 import { LATER_T, laterFill } from '@/lib/charge-later';
 import { CASH_T } from '@/lib/i18n/cash-dict';
 import { CARE_T } from '@/lib/i18n/care-dict';
+import { LiveMoney } from '../live-money';
 
 export type StayTimes = { checkInFrom: string; checkInTo: string; checkOutBy: string; /** "Da sapere" (pets, smoking…) in the guest's language */ rules?: { icon: string; text: string; ok: boolean }[] };
 const TIMES_T: Record<Locale, { range: string; from: string; by: string }> = {
@@ -41,6 +42,8 @@ type Hold = { bookingId: string; token: string; code: string; dueNow: number; to
 type Payments = { mode: 'full' | 'deposit_percent' | 'deposit_fixed'; depositPercent: number; depositFixed: number; cancellationPolicy: string; holdMinutes: number; freeCancellationDays: number; cancellationFee?: { type: 'percent' | 'first_night' | 'fixed'; value: number } };
 
 const EASE = [0.22, 0.61, 0.12, 1] as const;
+/** the payment step: "Modifica" next to the guest's details and the room */
+const EDIT_T: Record<Locale, string> = { it: 'Modifica', en: 'Edit', pl: 'Zmień', de: 'Ändern', fr: 'Modifier', es: 'Cambiar' };
 
 export function BookingFlow({
   today,
@@ -54,6 +57,7 @@ export function BookingFlow({
   online = true,
   times = null,
   extras = [],
+  initialMethod = null,
 }: {
   today: string;
   initialQuery: StayQuery;
@@ -69,9 +73,11 @@ export function BookingFlow({
   times?: StayTimes | null;
   /** Supplementi the hotel offers (paid at the hotel), names in the guest's language */
   extras?: SiteExtra[];
+  /** "?pay=cash" from a tap on the cash price of a room (home page, room page) */
+  initialMethod?: 'card' | 'cash' | null;
 }) {
   const [chosen, setChosen] = useState<string[]>([]);
-  const [method, setMethod] = useState<'card' | 'cash'>(online || !cash.enabled ? 'card' : 'cash');
+  const [method, setMethod] = useState<'card' | 'cash'>(initialMethod ?? (online || !cash.enabled ? 'card' : 'cash'));
   const { t, locale, href } = useI18n();
   const router = useRouter();
   const desktop = useIsDesktop();
@@ -241,6 +247,12 @@ export function BookingFlow({
   // the season's own cash prices of these nights, when the hotel set them
   const cashPct = canCash ? (quote?.cashPercent ?? room?.cashPercent ?? cash.percent) : 0;
   const cashTotal = hold ? Math.round(hold.total * (1 - cashPct / 100) * 100) / 100 : 0;
+  // the way chosen, kept to what this room allows (a cash-only room cannot be paid by card)
+  const way: 'card' | 'cash' = method === 'cash' ? (canCash ? 'cash' : 'card') : canCard || !canCash ? 'card' : 'cash';
+  const shownTotal = (() => {
+    const base = hold?.total ?? quote?.quote.total ?? null;
+    return base !== null && way === 'cash' && cashPct > 0 ? Math.round(base * (1 - cashPct / 100) * 100) / 100 : base;
+  })();
   // pay at the hotel: a code goes to the guest's e-mail first (nobody can book in someone else's name)
   const [cashCode, setCashCode] = useState<{ sentTo: string; at: number } | null>(null);
   const [codeInput, setCodeInput] = useState('');
@@ -285,6 +297,20 @@ export function BookingFlow({
       const s = await sendCashCode(hold.token, locale);
       if (s.ok) setCashCode({ sentTo: s.sentTo ?? cashCode?.sentTo ?? '', at: Date.now() });
       else cashError(s.error);
+    });
+  };
+
+  // back from the payment step: the held room is let go (the details typed stay), then the chosen step opens
+  const back = (to: number) => {
+    if (!hold) return go(to);
+    const token = hold.token;
+    startTransition(async () => {
+      await releaseHoldAction(token);
+      setHold(null);
+      setCashCode(null);
+      setCodeInput('');
+      setCashErr(null);
+      go(to);
     });
   };
 
@@ -336,7 +362,7 @@ export function BookingFlow({
     </label>
   );
 
-  const summary = <Summary room={room} query={query} quote={quote} hold={hold} payments={payments} promoInput={promoInput} setPromoInput={setPromoInput} applyPromo={() => setPromo(promoInput.trim() || null)} canPromo={step === 2 && !hold} guests={guests} cashPercent={cashPct} method={step === 3 ? method : 'card'} times={times} extras={extras} chosen={chosen} onToggleExtra={(id) => setChosen((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]))} />;
+  const summary = <Summary room={room} query={query} quote={quote} hold={hold} payments={payments} promoInput={promoInput} setPromoInput={setPromoInput} applyPromo={() => setPromo(promoInput.trim() || null)} canPromo={step === 2 && !hold} guests={guests} cashPercent={cashPct} method={way} onMethod={setMethod} canCard={canCard} times={times} extras={extras} chosen={chosen} onToggleExtra={(id) => setChosen((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]))} />;
 
   return (
     <div id="prenotazione-top" className="grid gap-10 [&>*]:min-w-0 md:grid-cols-12 md:gap-8 lg:gap-14">
@@ -348,7 +374,7 @@ export function BookingFlow({
             const current = i === step;
             return (
               <li key={label} className="min-w-0">
-                <button type="button" disabled={!done || i >= 3 || Boolean(hold)} onClick={() => go(i)} className="group w-full text-left disabled:cursor-default" aria-current={current ? 'step' : undefined}>
+                <button type="button" disabled={!done || i >= 3 || pending} onClick={() => back(i)} className="group w-full text-left disabled:cursor-default" aria-current={current ? 'step' : undefined}>
                   <span className="relative block h-px w-full bg-line">
                     <motion.span className="absolute inset-y-0 left-0 bg-navy" initial={false} animate={{ width: done ? '100%' : current ? '50%' : '0%' }} transition={{ duration: 0.8, ease: EASE }} />
                   </span>
@@ -371,7 +397,7 @@ export function BookingFlow({
           )}
         </AnimatePresence>
 
-        {step >= 2 && <MobileSummary room={room} query={query} total={hold?.total ?? quote?.quote.total ?? null} guests={guests}>{summary}</MobileSummary>}
+        {step >= 2 && <MobileSummary room={room} query={query} total={shownTotal} guests={guests}>{summary}</MobileSummary>}
 
         <AnimatePresence mode="wait">
           <motion.div key={step <= 1 ? 'choose' : step} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.45, ease: EASE }}>
@@ -387,8 +413,10 @@ export function BookingFlow({
                 alternatives={alternatives}
                 selected={roomSlug}
                 cashPercent={cash.enabled ? cash.percent : 0}
-                onPick={(slug) => {
+                method={way}
+                onPick={(slug, w) => {
                   setRoomSlug(slug);
+                  if (w) setMethod(w);
                   go(2);
                 }}
               />
@@ -464,12 +492,39 @@ export function BookingFlow({
                   </p>
                 </div>
 
+                {/* everything that is being booked, in sight while paying, each part with its way back */}
+                <div className="mt-6 grid gap-3 xl:grid-cols-2" data-testid="pay-recap">
+                  <RecapCard
+                    i={0}
+                    icon={UserRound}
+                    label={steps[2]!}
+                    title={`${form.firstName} ${form.lastName}`.trim()}
+                    lines={[form.email, form.phone, form.specialRequests.trim() ? `“${form.specialRequests.trim()}”` : ''].filter(Boolean)}
+                    edit={EDIT_T[locale]}
+                    disabled={pending}
+                    onEdit={() => back(2)}
+                  />
+                  <RecapCard
+                    i={1}
+                    icon={BedDouble}
+                    label={steps[1]!}
+                    title={room?.name ?? '—'}
+                    lines={[
+                      query.checkIn && query.checkOut ? `${fmtDate(query.checkIn, locale, { weekday: 'short', day: 'numeric', month: 'short' })} → ${fmtDate(query.checkOut, locale, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}` : '',
+                      [query.checkIn && query.checkOut ? plural(locale, diffDays(query.checkIn, query.checkOut), t.booking.nights) : '', plural(locale, guests, t.search.guestsCount)].filter(Boolean).join(' · '),
+                    ].filter(Boolean)}
+                    edit={EDIT_T[locale]}
+                    disabled={pending}
+                    onEdit={() => back(1)}
+                  />
+                </div>
+
                 <p className="label mt-8">{t.booking.pay.method}</p>
                 <div role="radiogroup" aria-label={t.booking.pay.method} className={cn('grid gap-3', canCash && canCard && 'sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2')}>
-                  {canCard && <MethodOption active={method === 'card'} onSelect={() => setMethod('card')} icon={CreditCard} title={t.booking.pay.card} note={t.booking.pay.cardNote} price={money(hold.total, locale, 2)} badge={hold.chargeOn ? LATER_T[locale].today : undefined} />}
+                  {canCard && <MethodOption active={way === 'card'} onSelect={() => setMethod('card')} icon={CreditCard} title={t.booking.pay.card} note={t.booking.pay.cardNote} price={money(hold.total, locale, 2)} badge={hold.chargeOn ? LATER_T[locale].today : undefined} />}
                   {canCash && (
                     <MethodOption
-                      active={method === 'cash'}
+                      active={way === 'cash'}
                       onSelect={() => setMethod('cash')}
                       icon={Banknote}
                       title={t.booking.pay.cash}
@@ -482,7 +537,7 @@ export function BookingFlow({
                 </div>
 
                 <AnimatePresence mode="wait" initial={false}>
-                  {method === 'card' ? (
+                  {way === 'card' ? (
                     <motion.div key="card" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.4, ease: EASE }} className="mt-6 overflow-hidden rounded-[1.75rem] border border-line bg-white">
                       <div className="grid items-center gap-6 bg-[radial-gradient(120%_120%_at_100%_0%,rgba(201,169,110,0.16),transparent_55%)] p-6 sm:grid-cols-[1fr_auto] md:p-8">
                         <div>
@@ -614,6 +669,9 @@ export function BookingFlow({
                     </motion.div>
                   )}
                 </AnimatePresence>
+                <button type="button" disabled={pending} onClick={() => back(2)} className="group mt-6 inline-flex items-center gap-2 text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-mist transition-colors hover:text-navy disabled:opacity-50" data-testid="pay-back">
+                  <ArrowLeft className="h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" /> {t.booking.back}
+                </button>
                 <p className="mt-6 text-sm leading-relaxed text-charcoal/70">
                   <strong className="font-semibold text-navy">{t.booking.policy}:</strong> {cancelText(locale, payments, { checkIn: query.checkIn, total: hold?.total ?? null, nights: query.checkIn && query.checkOut ? diffDays(query.checkIn, query.checkOut) : null, bookedAt: new Date().toISOString() })} {payments.cancellationPolicy}
                 </p>
@@ -663,7 +721,7 @@ function MobileSummary({ room, query, total, guests, children }: { room: RoomCar
   );
 }
 
-function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput, applyPromo, canPromo, guests, cashPercent, method, times = null, extras = [], chosen = [], onToggleExtra }: { room: RoomCardData | null; query: StayQuery; quote: QuoteResponse | null; hold: Hold | null; payments: Payments; promoInput: string; setPromoInput: (s: string) => void; applyPromo: () => void; canPromo: boolean; guests: number; cashPercent: number; method: 'card' | 'cash'; times?: StayTimes | null; extras?: SiteExtra[]; chosen?: string[]; onToggleExtra?: (id: string) => void }) {
+function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput, applyPromo, canPromo, guests, cashPercent, method, onMethod, canCard = true, times = null, extras = [], chosen = [], onToggleExtra }: { room: RoomCardData | null; query: StayQuery; quote: QuoteResponse | null; hold: Hold | null; payments: Payments; promoInput: string; setPromoInput: (s: string) => void; applyPromo: () => void; canPromo: boolean; guests: number; cashPercent: number; method: 'card' | 'cash'; onMethod?: (m: 'card' | 'cash') => void; canCard?: boolean; times?: StayTimes | null; extras?: SiteExtra[]; chosen?: string[]; onToggleExtra?: (id: string) => void }) {
   const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
   const q = quote?.quote;
@@ -766,24 +824,23 @@ function Summary({ room, query, quote, hold, payments, promoInput, setPromoInput
         {quote?.promoRequested && !quote.promoValid && canPromo && <p className="mt-2 text-xs text-terracotta">Codice non valido per queste date.</p>}
         <div className="mt-6 flex items-end justify-between border-t border-line pt-5">
           <span className="eyebrow text-mist">{t.booking.total}</span>
-          <span className="serif text-[2.2rem] leading-none text-navy">{total !== null ? money(showCash ? cashTotal! : total, locale, 2) : '—'}</span>
+          <span className="serif text-[2.2rem] leading-none text-navy">{total !== null ? <LiveMoney value={showCash ? cashTotal! : total} decimals={2} badge={false} /> : '—'}</span>
         </div>
         {total !== null && cashTotal !== null && (
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-            <p className={cn('rounded-2xl border px-3 py-2 transition-colors', !showCash ? 'border-navy bg-navy text-ivory' : 'border-line text-mist')}>
-              <span className="flex items-center gap-1.5">
-                <CreditCard className="h-3.5 w-3.5" /> {t.booking.pay.priceCard}
-              </span>
-              <span className="serif mt-1 block text-[1.3rem] leading-none">{money(total, locale, 2)}</span>
-            </p>
-            <p className={cn('rounded-2xl border px-3 py-2 transition-colors', showCash ? 'border-sage bg-sage text-ivory' : 'border-sage/30 bg-sage/10 text-[#3f5a35]')}>
-              <span className="flex items-center gap-1.5">
-                <Banknote className="h-3.5 w-3.5" /> {t.booking.pay.priceCash} −{Math.round(cashPercent)}%
-              </span>
-              <span className="serif mt-1 block text-[1.5rem] leading-none">{money(cashTotal, locale, 2)}</span>
-            </p>
+          <div role="radiogroup" aria-label={t.booking.pay.method} className="mt-3 grid grid-cols-2 gap-2 text-xs" data-testid="summary-way">
+            <WayChoice on={!showCash} disabled={!canCard || !onMethod} onPick={() => onMethod?.('card')} icon={CreditCard} title={t.booking.pay.priceCard} price={money(total, locale, 2)} tone="card" />
+            <WayChoice on={showCash} disabled={!onMethod} onPick={() => onMethod?.('cash')} icon={Banknote} title={`${t.booking.pay.priceCash} −${Math.round(cashPercent)}%`} price={money(cashTotal, locale, 2)} tone="cash" />
           </div>
         )}
+        <AnimatePresence initial={false}>
+          {showCash && (
+            <motion.p key="cash-note" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.35 }} className="overflow-hidden">
+              <span className="mt-3 flex items-center gap-2 text-sm text-[#3f5a35]">
+                <Banknote className="h-4 w-4 shrink-0" /> {t.booking.pay.cashNote}
+              </span>
+            </motion.p>
+          )}
+        </AnimatePresence>
         {quote?.touristTax && <TaxLine className="mt-3" tax={quote.touristTax} />}
         {q && extras.length > 0 && (canPromo || chosen.length > 0) && <ExtrasPicker extras={extras} chosen={chosen} onToggle={canPromo && !hold ? onToggleExtra : undefined} nights={q.nights} guests={guests} />}
         {!showCash && dueNow !== null && total !== null && (
@@ -858,6 +915,81 @@ function PhotoCarousel({ photos }: { photos: { src: string; alt: string }[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** One part of the booking on the payment step (the guest, the room), with "Modifica" to go back to it. */
+function RecapCard({ i, icon: Icon, label, title, lines, edit, disabled, onEdit }: { i: number; icon: React.ComponentType<{ className?: string }>; label: string; title: string; lines: string[]; edit: string; disabled: boolean; onEdit: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: EASE, delay: 0.08 + i * 0.08 }}
+      className="flex min-w-0 items-start gap-3 rounded-[1.4rem] border border-line bg-white p-4"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sand-2 text-gold-2">
+        <Icon className="h-[1.1rem] w-[1.1rem]" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-mist">{label}</span>
+        <span className="mt-0.5 block truncate font-semibold text-navy">{title}</span>
+        {lines.map((l) => (
+          <span key={l} className="block truncate text-xs leading-relaxed text-charcoal/75">
+            {l}
+          </span>
+        ))}
+      </span>
+      <motion.button
+        type="button"
+        disabled={disabled}
+        onClick={onEdit}
+        whileTap={{ scale: 0.94 }}
+        className="group inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-navy transition-colors hover:border-navy hover:bg-navy hover:text-ivory disabled:opacity-50"
+      >
+        <Pencil className="h-3 w-3 transition-transform duration-300 group-hover:-rotate-12" /> {edit}
+      </motion.button>
+    </motion.div>
+  );
+}
+
+/** Card or cash under the total of the summary: a tap chooses it (navy for the card, green for cash). */
+function WayChoice({ on, disabled, onPick, icon: Icon, title, price, tone }: { on: boolean; disabled: boolean; onPick: () => void; icon: React.ComponentType<{ className?: string }>; title: string; price: string; tone: 'card' | 'cash' }) {
+  const card = tone === 'card';
+  return (
+    <motion.button
+      type="button"
+      role="radio"
+      aria-checked={on}
+      disabled={disabled}
+      onClick={onPick}
+      whileHover={disabled ? undefined : { y: -2 }}
+      whileTap={disabled ? undefined : { scale: 0.95 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 26 }}
+      className={cn(
+        'group/way relative rounded-2xl border px-3 py-2 text-left transition-[background-color,border-color,color,box-shadow] duration-300 disabled:cursor-default',
+        card
+          ? on
+            ? 'border-navy bg-navy text-ivory shadow-[0_16px_30px_-18px_rgba(16,40,61,0.85)]'
+            : 'border-line bg-white text-mist enabled:hover:border-navy/60 enabled:hover:text-navy'
+          : on
+            ? 'border-sage bg-sage text-ivory shadow-[0_16px_30px_-18px_rgba(63,90,53,0.85)]'
+            : 'border-sage/30 bg-sage/10 text-[#3f5a35] enabled:hover:border-sage',
+      )}
+    >
+      <span className="flex items-center gap-1.5 pr-5">
+        <Icon className="h-3.5 w-3.5 shrink-0" /> <span className="leading-tight">{title}</span>
+      </span>
+      <span className={cn('serif mt-1 block leading-none', card ? 'text-[1.3rem]' : 'text-[1.5rem]')}>{price}</span>
+      {!disabled && (
+        <span aria-hidden="true" className={cn('absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full border transition-colors duration-300', on ? cn('border-ivory bg-ivory', card ? 'text-navy' : 'text-sage') : card ? 'border-navy/25 group-hover/way:border-navy/60' : 'border-sage/50 group-hover/way:border-sage')}>
+          {on && (
+            <motion.span initial={{ scale: 0, rotate: -40 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 500, damping: 18 }} className="flex">
+              <Check className="h-2.5 w-2.5" strokeWidth={3.5} />
+            </motion.span>
+          )}
+        </span>
+      )}
+    </motion.button>
   );
 }
 
