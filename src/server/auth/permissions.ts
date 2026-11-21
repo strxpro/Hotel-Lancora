@@ -6,6 +6,7 @@ export type Permission =
   | 'rooms.delete'
   | 'prices.edit'
   | 'bookings.manage'
+  | 'bookings.delete'
   | 'payments.manage'
   | 'settings.edit'
   | 'users.manage'
@@ -20,6 +21,7 @@ const PERMS: Record<Permission, Role[]> = {
   'rooms.delete': ['admin'],
   'prices.edit': ['admin'],
   'bookings.manage': ['admin', 'staff'],
+  'bookings.delete': ['admin'],
   'payments.manage': ['admin'],
   'settings.edit': ['admin'],
   'users.manage': ['admin'],

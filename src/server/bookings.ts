@@ -252,6 +252,26 @@ export function cancelBooking(bookingId: string, actor: string, opts: { refundAm
   });
 }
 
+/**
+ * The bin on the list: the booking goes away for good, and with it what only made sense with it
+ * (its payment lines, e-mails, conversation, alerts). Reviews stay, without the link. No e-mail to
+ * the guest and no refund: cancelling is the way for that. Only a short line stays in the log.
+ */
+export function deleteBooking(bookingId: string, actor: string): { code: string; guest: string } {
+  return mutate((db) => {
+    const b = db.bookings.find((x) => x.id === bookingId);
+    if (!b) throw new BookingError('Prenotazione non trovata: forse è già stata eliminata.', 'not_found');
+    db.bookings = db.bookings.filter((x) => x.id !== b.id);
+    db.payments = db.payments.filter((p) => p.bookingId !== b.id);
+    db.outbox = db.outbox.filter((m) => m.bookingId !== b.id);
+    db.messages = db.messages.filter((m) => m.bookingId !== b.id);
+    for (const f of db.feedback) if (f.bookingId === b.id) f.bookingId = null;
+    db.notifications = db.notifications.filter((n) => !n.href?.includes(`id=${b.id}`));
+    audit(db, actor, 'delete', 'booking', null, `Eliminata ${b.code} · ${guestName(b)} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}${b.amountPaid ? ` · versato € ${b.amountPaid.toFixed(2)}` : ''}`);
+    return { code: b.code, guest: guestName(b) };
+  });
+}
+
 export function refundPayment(bookingId: string, amount: number, actor: string): Booking {
   return mutate((db) => {
     const b = db.bookings.find((x) => x.id === bookingId);

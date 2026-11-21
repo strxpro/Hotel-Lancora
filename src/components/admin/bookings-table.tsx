@@ -2,7 +2,8 @@
 import { cancelDeadline, cancelFeeAmount, cancelRefund, isFreeCancel } from '@/lib/cancellation';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ExternalLink, Mail, Plus, Search } from 'lucide-react';
+import { motion } from 'motion/react';
+import { ExternalLink, Mail, Plus, Search, Trash2 } from 'lucide-react';
 import type { BookingRow, RoomOption } from '@/server/admin-data';
 import { diffDays, fmtDate, fmtDateLong, fmtDateTime, todayISO } from '@/lib/dates';
 import { cn, money, notti, ospiti } from '@/lib/utils';
@@ -14,6 +15,9 @@ import { GuestLink, useGuestCard } from './guest-card';
 import { assignRoomAction, markPaidAction, notesAction, refundAction, sendBookingEmailAction } from '@/app/admin/actions/bookings';
 import { cancelAndRefundAction } from '@/app/admin/actions/booking-care';
 import { BookingCare } from './booking-care';
+import { BinButton, DeleteBookingDialog, type DeleteTarget } from './delete-booking';
+
+const target = (r: BookingRow): DeleteTarget => ({ id: r.id, guest: r.guest, code: r.code, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, room: r.roomName, total: r.total, amountPaid: r.amountPaid, status: r.status, active: r.active });
 
 const FILTERS = [
   { key: 'tutte', label: 'Tutte' },
@@ -27,7 +31,7 @@ const FILTERS = [
 ] as const;
 type FilterKey = (typeof FILTERS)[number]['key'];
 
-export function BookingsTable({ rows, rooms, blocks, initialFilter, openId, openNew, isAdmin, freeCancellationDays, cancellationFee }: { rows: BookingRow[]; rooms: RoomOption[]; blocks: BlockRow[]; initialFilter: string; openId?: string; openNew?: boolean; isAdmin: boolean; freeCancellationDays: number; cancellationFee?: { type: 'percent' | 'first_night' | 'fixed'; value: number } }) {
+export function BookingsTable({ rows, rooms, blocks, initialFilter, openId, openNew, isAdmin, canDelete = false, freeCancellationDays, cancellationFee }: { rows: BookingRow[]; rooms: RoomOption[]; blocks: BlockRow[]; initialFilter: string; openId?: string; openNew?: boolean; isAdmin: boolean; /** the bin on every booking (owner only) */ canDelete?: boolean; freeCancellationDays: number; cancellationFee?: { type: 'percent' | 'first_night' | 'fixed'; value: number } }) {
   const today = todayISO();
   const router = useRouter();
   const [filter, setFilter] = useState<FilterKey>((FILTERS.some((f) => f.key === initialFilter) ? initialFilter : 'tutte') as FilterKey);
@@ -35,6 +39,24 @@ export function BookingsTable({ rows, rooms, blocks, initialFilter, openId, open
   const [source, setSource] = useState('');
   const [open, setOpen] = useState<string | null>(openId ?? null);
   const [creating, setCreating] = useState(Boolean(openNew));
+  // the bin: the booking asked about, the one sliding away, the ones already gone (until the page reloads)
+  const [toDelete, setToDelete] = useState<BookingRow | null>(null);
+  const [leaving, setLeaving] = useState<string | null>(null);
+  const [gone, setGone] = useState<string[]>([]);
+  const deleted = (id: string) => {
+    setToDelete(null);
+    setOpen((o) => (o === id ? null : o));
+    setLeaving(id);
+    window.setTimeout(() => {
+      setGone((g) => [...g, id]);
+      setLeaving(null);
+      router.refresh();
+    }, 480);
+  };
+  const askDelete = (r: BookingRow) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setToDelete(r);
+  };
   // the drawer and the dialog live in a portal (browser only): opened from a link (?id=) they appear
   // right after the page has loaded, so the page from the server and the one in the browser match
   const [mounted, setMounted] = useState(false);
@@ -52,6 +74,7 @@ export function BookingsTable({ rows, rooms, blocks, initialFilter, openId, open
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
     return rows
+      .filter((r) => !gone.includes(r.id))
       .filter((r) => {
         switch (filter) {
           case 'arrivi':
@@ -75,7 +98,7 @@ export function BookingsTable({ rows, rooms, blocks, initialFilter, openId, open
       .filter((r) => !source || r.source === source)
       .filter((r) => !s || `${r.code} ${r.guest} ${r.email} ${r.roomNumber ?? ''} ${r.otaRef ?? ''}`.toLowerCase().includes(s))
       .sort((a, b) => (filter === 'tutte' ? b.createdAt.localeCompare(a.createdAt) : a.checkIn.localeCompare(b.checkIn)));
-  }, [rows, filter, q, source, today]);
+  }, [rows, filter, q, source, today, gone]);
 
   const current = rows.find((r) => r.id === open) ?? null;
   const count = (k: FilterKey) => (k === 'da_assegnare' ? rows.filter((r) => r.active && !r.roomId && r.checkOut > today).length : 0);
@@ -140,11 +163,23 @@ export function BookingsTable({ rows, rooms, blocks, initialFilter, openId, open
                   <th className="px-3 py-3">Provenienza</th>
                   <th className="px-3 py-3 text-right">Totale</th>
                   <th className="px-4 py-3 text-right">Stato</th>
+                  {canDelete && (
+                    <th className="w-14 py-3 pr-4">
+                      <span className="sr-only">Elimina</span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
                 {list.slice(0, 300).map((r) => (
-                  <tr key={r.id} onClick={() => setOpen(r.id)} className="cursor-pointer transition-colors hover:bg-ivory">
+                  <motion.tr
+                    key={r.id}
+                    onClick={() => setOpen(r.id)}
+                    initial={false}
+                    animate={leaving === r.id ? { opacity: 0, x: 70 } : { opacity: 1, x: 0 }}
+                    transition={{ duration: 0.42, ease: [0.4, 0, 0.2, 1] }}
+                    className={cn('cursor-pointer transition-colors hover:bg-ivory', leaving === r.id && 'bg-terracotta/10')}
+                  >
                     <td className="px-4 py-3">
                       <p className="font-medium text-navy">
                         <GuestLink email={r.email} bookingId={r.id}>{r.guest}</GuestLink>
@@ -172,14 +207,25 @@ export function BookingsTable({ rows, rooms, blocks, initialFilter, openId, open
                     <td className="px-4 py-3 text-right">
                       <StatusBadge row={r} />
                     </td>
-                  </tr>
+                    {canDelete && (
+                      <td className="py-3 pr-4 text-right">
+                        <BinButton onClick={askDelete(r)} label={`Elimina la prenotazione di ${r.guest}`} />
+                      </td>
+                    )}
+                  </motion.tr>
                 ))}
               </tbody>
             </table>
             <ul className="divide-y divide-line md:hidden">
               {list.slice(0, 200).map((r) => (
-                <li key={r.id}>
-                  <button type="button" onClick={() => setOpen(r.id)} className="flex w-full items-start justify-between gap-3 px-4 py-3.5 text-left">
+                <motion.li
+                  key={r.id}
+                  initial={false}
+                  animate={leaving === r.id ? { opacity: 0, x: 60, height: 0 } : { opacity: 1, x: 0, height: 'auto' }}
+                  transition={{ duration: 0.42, ease: [0.4, 0, 0.2, 1] }}
+                  className={cn('flex items-stretch overflow-hidden', leaving === r.id && 'bg-terracotta/10')}
+                >
+                  <button type="button" onClick={() => setOpen(r.id)} className={cn('flex min-w-0 flex-1 items-start justify-between gap-3 py-3.5 pl-4 text-left', canDelete ? 'pr-2' : 'pr-4')}>
                     <span className="min-w-0">
                       <span className="block font-medium text-navy">
                         <GuestLink inline email={r.email} bookingId={r.id}>{r.guest}</GuestLink>
@@ -195,21 +241,27 @@ export function BookingsTable({ rows, rooms, blocks, initialFilter, openId, open
                       <StatusBadge row={r} />
                     </span>
                   </button>
-                </li>
+                  {canDelete && (
+                    <span className="flex items-center pr-3">
+                      <BinButton onClick={askDelete(r)} label={`Elimina la prenotazione di ${r.guest}`} />
+                    </span>
+                  )}
+                </motion.li>
               ))}
             </ul>
           </>
         )}
       </div>
       <p className="mt-3 text-xs text-mist">{list.length} prenotazioni</p>
+      {mounted && canDelete && <DeleteBookingDialog row={toDelete && target(toDelete)} onClose={() => setToDelete(null)} onDeleted={deleted} />}
 
-      {mounted && current && <BookingDrawer key={current.id} row={current} onClose={() => setOpen(null)} rooms={rooms} rows={rows} blocks={blocks} isAdmin={isAdmin} freeCancellationDays={freeCancellationDays} cancellationFee={cancellationFee} onChanged={() => router.refresh()} />}
+      {mounted && current && <BookingDrawer key={current.id} row={current} onClose={() => setOpen(null)} rooms={rooms} rows={rows} blocks={blocks} isAdmin={isAdmin} freeCancellationDays={freeCancellationDays} cancellationFee={cancellationFee} onChanged={() => router.refresh()} onDelete={canDelete ? () => setToDelete(current) : undefined} />}
       {mounted && creating && <NewBookingDialog open onClose={() => setCreating(false)} rooms={rooms} bookings={rows} blocks={blocks} />}
     </div>
   );
 }
 
-function BookingDrawer({ row, onClose, rooms, rows, blocks, isAdmin, freeCancellationDays, cancellationFee, onChanged }: { row: BookingRow; onClose: () => void; rooms: RoomOption[]; rows: BookingRow[]; blocks: BlockRow[]; isAdmin: boolean; freeCancellationDays: number; cancellationFee?: { type: 'percent' | 'first_night' | 'fixed'; value: number }; onChanged: () => void }) {
+function BookingDrawer({ row, onClose, rooms, rows, blocks, isAdmin, freeCancellationDays, cancellationFee, onChanged, onDelete }: { row: BookingRow; onClose: () => void; rooms: RoomOption[]; rows: BookingRow[]; blocks: BlockRow[]; isAdmin: boolean; freeCancellationDays: number; cancellationFee?: { type: 'percent' | 'first_night' | 'fixed'; value: number }; onChanged: () => void; onDelete?: () => void }) {
   const { run, pending } = useAction();
   const openGuest = useGuestCard();
   const [roomId, setRoomId] = useState('');
@@ -342,7 +394,12 @@ function BookingDrawer({ row, onClose, rooms, rows, blocks, isAdmin, freeCancell
         <a href={`/soggiorno/${row.token}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-semibold text-navy">
           Area ospite <ExternalLink className="h-3.5 w-3.5" />
         </a>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
+          {onDelete && (
+            <Button variant="line" size="sm" onClick={onDelete} className="text-terracotta hover:border-terracotta">
+              <Trash2 className="h-3.5 w-3.5" /> Elimina
+            </Button>
+          )}
           {isAdmin && row.amountPaid > 0 && row.status === 'cancelled' && (
             <Button variant="line" size="sm" disabled={pending} onClick={() => run(() => refundAction(row.id, row.amountPaid), { onOk: onChanged })}>
               Rimborsa {money(row.amountPaid)}

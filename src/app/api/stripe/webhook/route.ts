@@ -3,6 +3,7 @@ import { statusFromAccount, stripeMode, verifyWebhook } from '@/server/payments/
 import { cancelBooking, confirmPayment } from '@/server/bookings';
 import { mutate, readDb } from '@/server/db/store';
 import { completeCardSession } from '@/server/payments/card';
+import { notify } from '@/server/events';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,14 @@ export async function POST(req: Request) {
   if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
     const s = event.data.object;
     const bookingId = s.metadata?.bookingId;
+    // the owner deleted the booking while the guest was still paying: the money is on Stripe, tell the owner
+    if (bookingId && !readDb().bookings.some((x) => x.id === bookingId)) {
+      if (s.payment_status === 'paid' && s.amount_total) {
+        const who = s.customer_details?.email ?? s.customer_email ?? 'un ospite';
+        mutate((db) => void notify(db, 'nuovo_pagamento', 'Pagamento per una prenotazione eliminata', `${who} ha pagato € ${(s.amount_total! / 100).toFixed(2)} con la carta per una prenotazione che è stata eliminata. Registrala di nuovo oppure restituisci i soldi da Stripe.`, '/admin/pagamenti'));
+      }
+      return NextResponse.json({ received: true });
+    }
     // the booking's own payment (the card pages of the guest area have a purpose: completeCardSession records them)
     if (bookingId && s.payment_status === 'paid' && !s.metadata?.purpose) {
       confirmPayment(bookingId, { amount: (s.amount_total ?? 0) / 100, provider: stripeMode() === 'live' ? 'stripe' : 'stripe_test', reference: String(s.payment_intent ?? s.id) });

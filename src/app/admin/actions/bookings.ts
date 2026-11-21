@@ -1,7 +1,7 @@
 'use server';
 import { z } from 'zod';
 import { act, UserError } from '@/server/action';
-import { assignRoom, cancelBooking, createManualBooking, markPaid, updateBookingNotes } from '@/server/bookings';
+import { assignRoom, cancelBooking, createManualBooking, deleteBooking, markPaid, updateBookingNotes } from '@/server/bookings';
 import { mutate, readDb } from '@/server/db/store';
 import { queueEmail } from '@/server/events';
 import { clean } from '@/server/security';
@@ -60,6 +60,11 @@ export async function cancelBookingAction(bookingId: string, refundAmount: numbe
     const refund = role === 'admin' ? Math.max(0, refundAmount) : 0;
     cancelBooking(bookingId, u.name, { refundAmount: refund, reason: clean(reason, 200), notifyGuest });
   }, 'Prenotazione annullata: le notti sono di nuovo disponibili.');
+}
+
+/** The bin on the list (owner only): the booking disappears for good. */
+export async function deleteBookingAction(bookingId: string) {
+  return act('bookings.delete', (u) => void deleteBooking(z.string().min(1).max(80).parse(bookingId), u.name), 'Prenotazione eliminata.');
 }
 
 export async function markPaidAction(bookingId: string, amount: number, provider: 'contanti' | 'bonifico' | 'simulazione' | 'pos') {

@@ -21,7 +21,7 @@ export async function guestCardAction(raw: unknown) {
     const ref = Ref.parse(raw);
     const data = guestCard(readDb(), ref);
     if (!data) throw new UserError('Ospite non trovato.');
-    return { ...data, canRefund: can(u.role, 'payments.manage'), canGdpr: can(u.role, 'guests.gdpr') };
+    return { ...data, canRefund: can(u.role, 'payments.manage'), canGdpr: can(u.role, 'guests.gdpr'), canDelete: can(u.role, 'bookings.delete') };
   });
 }
 

@@ -1,4 +1,5 @@
 import { requirePageUser } from '@/server/auth/guard';
+import { can } from '@/server/auth/permissions';
 import { readDb } from '@/server/db/store';
 import { bookingRow, roomOptions } from '@/server/admin-data';
 import { PageHeader } from '@/components/admin/ui';
@@ -22,6 +23,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
         openId={sp.id}
         openNew={sp.nuova === '1'}
         isAdmin={user.role === 'admin'}
+        canDelete={can(user.role, 'bookings.delete')}
         freeCancellationDays={db.settings.payments.freeCancellationDays}
         cancellationFee={db.settings.payments.cancellationFee}
       />

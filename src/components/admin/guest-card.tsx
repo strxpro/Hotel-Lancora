@@ -13,10 +13,11 @@ import { NiceSelect } from './nice-select';
 import { Flag } from '@/components/site/flags';
 import { guestCardAction, refundGuestPaymentAction, sendGuestEmailAction } from '@/app/admin/actions/guests';
 import { anonymizeGuestAction, notesAction } from '@/app/admin/actions/bookings';
+import { BinButton, DeleteBookingDialog, type DeleteTarget } from './delete-booking';
 
 const EASE = [0.22, 0.61, 0.12, 1] as const;
 type Target = { email?: string | null; bookingId?: string | null };
-type CardData = GuestCardData & { canRefund: boolean; canGdpr: boolean };
+type CardData = GuestCardData & { canRefund: boolean; canGdpr: boolean; canDelete?: boolean };
 type Pay = CardData['payments'][number];
 type Tab = 'prenotazioni' | 'pagamenti' | 'messaggi' | 'note' | 'storico';
 
@@ -77,6 +78,9 @@ function GuestCardModal({ target, onClose }: { target: Target | null; onClose: (
   const [compose, setCompose] = useState(false);
   const [refund, setRefund] = useState<Pay | null>(null);
   const [gdpr, setGdpr] = useState(false);
+  // the bin on a booking of this person: the one asked about, the ones already gone
+  const [del, setDel] = useState<DeleteTarget | null>(null);
+  const [gone, setGone] = useState<string[]>([]);
   const box = useRef<HTMLDivElement>(null);
   const key = target ? `${target.email ?? ''}|${target.bookingId ?? ''}` : '';
 
@@ -101,6 +105,8 @@ function GuestCardModal({ target, onClose }: { target: Target | null; onClose: (
     setTab('prenotazioni');
     setCompose(false);
     setRefund(null);
+    setDel(null);
+    setGone([]);
     load(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
@@ -112,7 +118,7 @@ function GuestCardModal({ target, onClose }: { target: Target | null; onClose: (
   }, [target, load, router]);
 
   // page behind stays still; Esc closes (unless a confirmation is open on top)
-  const sub = Boolean(refund) || gdpr;
+  const sub = Boolean(refund) || gdpr || Boolean(del);
   useEffect(() => {
     if (!target) return;
     const prev = document.activeElement as HTMLElement | null;
@@ -244,7 +250,7 @@ function GuestCardModal({ target, onClose }: { target: Target | null; onClose: (
                   <div data-lenis-prevent className="thin-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 md:px-7">
                     <AnimatePresence mode="wait" initial={false}>
                       <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}>
-                        {tab === 'prenotazioni' && <BookingsTab g={g} />}
+                        {tab === 'prenotazioni' && <BookingsTab g={g} gone={gone} onDelete={g.canDelete ? (b) => setDel({ id: b.id, guest: g.name, code: b.code, checkIn: b.checkIn, checkOut: b.checkOut, nights: b.nights, room: b.room ? `camera ${b.room}` : null, total: b.total, amountPaid: b.amountPaid, status: b.status, active: b.active }) : undefined} />}
                         {tab === 'pagamenti' && <PaymentsTab g={g} onRefund={setRefund} />}
                         {tab === 'messaggi' && <MessagesTab g={g} compose={compose} setCompose={setCompose} onSent={reload} />}
                         {tab === 'note' && <NotesTab g={g} onSaved={reload} />}
@@ -258,6 +264,23 @@ function GuestCardModal({ target, onClose }: { target: Target | null; onClose: (
           </div>
         )}
       </AnimatePresence>
+      {g?.canDelete && (
+        <DeleteBookingDialog
+          row={del}
+          onClose={() => setDel(null)}
+          onDeleted={(id) => {
+            setDel(null);
+            setGone((x) => [...x, id]);
+            const left = g.bookings.filter((b) => b.id !== id && !gone.includes(b.id)).length;
+            // nothing left to show about this person: the card closes, the page behind updates
+            window.setTimeout(() => {
+              if (!left && !g.messages.length) onClose();
+              else load({ email: g.email || null, bookingId: g.email ? null : g.bookings.find((b) => b.id !== id)?.id ?? null });
+              router.refresh();
+            }, 480);
+          }}
+        />
+      )}
       {g && refund && <RefundDialog g={g} pay={refund} onClose={() => setRefund(null)} onDone={() => { setRefund(null); setTab('pagamenti'); reload(); }} />}
       {g && (
         <GdprDialog
@@ -288,12 +311,18 @@ function Mini({ label, value }: { label: string; value: React.ReactNode }) {
 
 /* ---------------- tabs ---------------- */
 
-function BookingsTab({ g }: { g: CardData }) {
+function BookingsTab({ g, gone = [], onDelete }: { g: CardData; gone?: string[]; onDelete?: (b: CardData['bookings'][number]) => void }) {
   if (!g.bookings.length) return <p className="rounded-2xl bg-ivory p-5 text-sm text-mist">Nessuna prenotazione: questa persona ha solo scritto all’hotel.</p>;
   return (
     <ul className="space-y-2.5">
       {g.bookings.map((b) => (
-        <li key={b.id} className="rounded-2xl border border-line p-3.5">
+        <motion.li
+          key={b.id}
+          initial={false}
+          animate={gone.includes(b.id) ? { opacity: 0, x: 60, height: 0, marginTop: 0, paddingTop: 0, paddingBottom: 0, borderWidth: 0 } : { opacity: 1, x: 0, height: 'auto' }}
+          transition={{ duration: 0.42, ease: [0.4, 0, 0.2, 1] }}
+          className={cn('overflow-hidden rounded-2xl border border-line p-3.5', gone.includes(b.id) && 'bg-terracotta/10')}
+        >
           <div className="flex items-center gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-ivory font-serif text-lg text-navy">{b.room ?? '—'}</span>
             <span className="min-w-0 flex-1">
@@ -323,8 +352,9 @@ function BookingsTab({ g }: { g: CardData }) {
             <Link href={`/admin/prenotazioni?id=${b.id}`} className="ml-auto inline-flex items-center gap-1 font-semibold text-navy hover:underline">
               Apri la prenotazione <ArrowUpRight className="h-3.5 w-3.5" />
             </Link>
+            {onDelete && <BinButton onClick={() => onDelete(b)} label={`Elimina la prenotazione ${b.code}`} className="h-8 w-8" />}
           </div>
-        </li>
+        </motion.li>
       ))}
       {g.reviews.length > 0 && (
         <li className="rounded-2xl bg-ivory p-4">
