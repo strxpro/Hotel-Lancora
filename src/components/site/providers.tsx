@@ -151,7 +151,7 @@ function VisitBeacon() {
 /* ---------------- live data ---------------- */
 
 type LiveSub = (v: number) => void;
-const live = { subs: new Set<LiveSub>(), es: null as EventSource | null, last: null as number | null, poll: 0, fails: 0 };
+const live = { subs: new Set<LiveSub>(), es: null as EventSource | null, last: null as number | null, poll: 0, fails: 0, wake: null as (() => void) | null };
 
 function liveEmit(v: number) {
   if (live.last !== null && v !== live.last) for (const s of live.subs) s(v);
@@ -159,6 +159,33 @@ function liveEmit(v: number) {
 }
 
 const CLOUD_POLL = process.env.NEXT_PUBLIC_STORE_MODE === 'cloud';
+
+/* ---------------- a new version of the site ---------------- */
+
+/** The version of the code this page was built with (next.config.ts gives every build its own name). */
+const BUILD = process.env.NEXT_PUBLIC_BUILD_ID || '';
+const builds = { subs: new Set<(b: string) => void>(), seen: null as string | null };
+
+/** The server answered with the name of its build: a different one means a new version went live. */
+function checkBuild(b: unknown) {
+  if (typeof b !== 'string' || !b || !BUILD || b === BUILD || builds.seen === b) return;
+  builds.seen = b;
+  for (const s of builds.subs) s(b);
+}
+
+/** Calls onNew once the site has a newer version than the one this page is running. */
+export function onNewBuild(onNew: (build: string) => void): () => void {
+  builds.subs.add(onNew);
+  if (builds.seen) onNew(builds.seen);
+  return () => void builds.subs.delete(onNew);
+}
+
+async function askVersion(): Promise<number | null> {
+  const r = await fetch('/api/version', { cache: 'no-store' });
+  const j = (await r.json()) as { version: number; build?: string };
+  checkBuild(j.build);
+  return typeof j.version === 'number' ? j.version : null;
+}
 
 /** One connection per page: the server pushes every change (SSE); polling only as a fallback. */
 function liveStart() {
@@ -168,19 +195,32 @@ function liveStart() {
     const tick = async () => {
       if (document.visibilityState !== 'visible') return;
       try {
-        const r = await fetch('/api/version', { cache: 'no-store' });
-        liveEmit(((await r.json()) as { version: number }).version);
+        const v = await askVersion();
+        if (v !== null) liveEmit(v);
       } catch {
         /* offline */
       }
     };
     tick();
     live.poll = window.setInterval(tick, CLOUD_POLL ? 10000 : 4000);
+    // coming back to the window (another tab, another program): ask at once, not at the next round
+    let woke = 0;
+    const wake = () => {
+      // focus and "visible" arrive together: one question is enough
+      if (Date.now() - woke < 1500) return;
+      woke = Date.now();
+      void tick();
+    };
+    window.addEventListener('focus', wake);
+    document.addEventListener('visibilitychange', wake);
+    live.wake = wake;
   };
   // hosting without a long-lived server (Vercel): ask for the version from time to time
   if (CLOUD_POLL || !('EventSource' in window) || window.location.hostname.endsWith('.trycloudflare.com')) return poll();
   const es = new EventSource('/api/live');
   live.es = es;
+  // (re)connected, e.g. after the server restarted with a new version
+  es.onopen = () => void askVersion().catch(() => undefined);
   es.onmessage = (e) => {
     live.fails = 0;
     const v = Number(e.data);
@@ -202,13 +242,19 @@ function liveStop() {
   live.es = null;
   if (live.poll) window.clearInterval(live.poll);
   live.poll = 0;
+  if (live.wake) {
+    window.removeEventListener('focus', live.wake);
+    document.removeEventListener('visibilitychange', live.wake);
+    live.wake = null;
+  }
 }
 
 /** Calls onChange as soon as anything changes in the data (panel, assistant, Telegram, bookings). */
-export function useLiveVersion(onChange: () => void, _intervalMs = 4000) {
+export function useLiveVersion(onChange: () => void, _intervalMs = 4000, enabled = true) {
   const cb = useRef(onChange);
   cb.current = onChange;
   useEffect(() => {
+    if (!enabled) return;
     let t = 0;
     // several saves in a row (e.g. bulk prices) → one refresh
     const sub: LiveSub = () => {
@@ -222,5 +268,5 @@ export function useLiveVersion(onChange: () => void, _intervalMs = 4000) {
       live.subs.delete(sub);
       liveStop();
     };
-  }, []);
+  }, [enabled]);
 }

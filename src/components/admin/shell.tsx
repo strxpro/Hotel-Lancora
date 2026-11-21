@@ -9,6 +9,7 @@ import { fmtDateTime } from '@/lib/dates';
 import { cn } from '@/lib/utils';
 import { AnchorMark } from '@/components/site/brand';
 import { useLiveVersion } from '@/components/site/providers';
+import { NewVersionReload } from '@/components/site/new-version';
 import { PageTitleProvider, ToastProvider, usePageTitle, useSelectNumbersOnFocus } from './ui';
 import { AssistantPanel } from './assistant-panel';
 import { GuideTour, HelpButton } from './guide-tour';
@@ -104,6 +105,7 @@ export function AdminShell({ user, counts, notifications, demo, whisper = false,
       <PageTitleProvider>
       <GuestCardProvider>
       <div className="lg-panel isolate min-h-dvh overflow-x-clip bg-ivory text-charcoal">
+        <NewVersionReload area="panel" />
         {/* the soft colours behind the glass cards (they drift very slowly) */}
         <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden print:hidden">
           <div className="lg-blob absolute -left-[12%] top-[6%] h-[40rem] w-[40rem] rounded-full bg-[radial-gradient(circle,rgba(182,149,98,0.32),transparent_66%)]" />

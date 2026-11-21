@@ -4,6 +4,11 @@ import { appUrlFromVercel } from './src/lib/vercel-url';
 // the build on Vercel (sitemap, robots, page metadata) also needs the site's own address
 appUrlFromVercel();
 
+// every build gets its own name (the commit on Vercel): pages opened before a new version went live
+// see a different name from the server and reload themselves (components/site/new-version.tsx).
+// Set once in the main process, so every build worker inlines the same name.
+process.env.NEXT_PUBLIC_BUILD_ID ||= (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 12) || Date.now().toString(36);
+
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
@@ -22,6 +27,7 @@ const nextConfig: NextConfig = {
   // a new version can be built next to the running one (NEXT_BUILD_DIR=.next-build) and swapped in seconds
   distDir: process.env.NEXT_BUILD_DIR || '.next',
   poweredByHeader: false,
+  env: { NEXT_PUBLIC_BUILD_ID: process.env.NEXT_PUBLIC_BUILD_ID },
   // read at run time by the panel's database check: on Vercel only traced files reach the server
   outputFileTracingIncludes: { '/**': ['./supabase/hotel-tables.sql'] },
   images: {

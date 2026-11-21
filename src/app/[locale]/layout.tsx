@@ -5,6 +5,7 @@ import { getDictionary } from '@/lib/i18n/dictionaries';
 import { readDb } from '@/server/db/store';
 import { transcriptionConfigured } from '@/server/ai/transcribe';
 import { SiteProviders } from '@/components/site/providers';
+import { NewVersionReload } from '@/components/site/new-version';
 import { TransitionProvider } from '@/components/site/transition';
 import { Header } from '@/components/site/header';
 import { Footer } from '@/components/site/footer';
@@ -56,6 +57,7 @@ export default async function LocaleLayout({ children, params }: { children: Rea
         <main id="contenuto">{children}</main>
         <Footer hotel={footerHotel} demo={demoMode} />
         <BackToTop />
+        <NewVersionReload area="site" />
         <ChatWidget voice={transcriptionConfigured()} />
         <LegalDialog hotel={{ name: hotel.name, addressLine: hotel.addressVerified ? hotel.addressLine : undefined, phone: hotel.phone, vat: hotel.vat, postalCode: hotel.postalCode, city: hotel.city, province: hotel.province, email: hotel.email, cancel: { title: cancelTitle(locale), text: [cancelText(locale, payments), payments.cancellationPolicy].filter(Boolean).join(' ') } }} />
       </TransitionProvider>
