@@ -37,6 +37,12 @@ export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 
     router.push(href(`/prenotazione?${p.toString()}`));
   };
   const pct = result?.cashPercent ?? room.cashPercent ?? cashPercent;
+  // before any date: the lowest night with card and in cash, side by side (when cash costs less)
+  const from = room.fromPrice ?? room.basePrice;
+  const fromCash = room.fromCash ?? null;
+  const fromPair = fromCash !== null && (room.pay?.card === false || fromCash < from);
+  // two prices side by side need the whole row on a phone list card (the arrow goes: the card opens the room anyway)
+  const showsPair = result ? pct > 0 : fromPair;
   const cash = (n: number) => Math.round(n * (1 - pct / 100) * 100) / 100;
   const masonry = variant === 'masonry';
   // one under the other: the photo on the left, everything else on the right (stacked on phones)
@@ -137,11 +143,23 @@ export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 
                 <p className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-mist">
                   {t.rooms.total} · {plural(locale, result.nights, t.booking.nights)}
                 </p>
-                <PricePair className="relative z-[2] mt-2" size={masonry || list ? 'sm' : 'md'} card={result.total} cash={pct > 0 ? cash(result.total) : null} onPick={bookWith} />
+                <PricePair className="relative z-[2] mt-2" size={masonry || list ? 'sm' : 'md'} card={result.total} cash={pct > 0 ? cash(result.total) : null} onPick={bookWith} compact />
                 <p className={cn('mt-1.5 text-[0.72rem] text-mist', list && 'hidden md:block')}>
                   {money(result.averageNight, locale)} {t.rooms.perNight} · {room.board === 'breakfast' ? rates.breakfast : rates.roomOnly}
                 </p>
                 {(result.singleUse ?? 0) > 0 && <p className="mt-1.5 inline-flex items-center rounded-full bg-gold/15 px-2.5 py-1 text-[0.7rem] font-semibold text-[#7a5a1f]">{rates.singleUse.replace('{p}', String(result.singleUse))}</p>}
+              </div>
+            ) : fromPair ? (
+              // no dates yet: the lowest night with card and in cash ("da 45 € / 38 €"); a tap on one opens the
+              // booking with that way to pay, the exact total comes with the dates (room page calendar)
+              <div className="min-w-0 flex-1 leading-tight" data-testid="from-pair">
+                <span className="block text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-mist">
+                  {t.rooms.from} · {t.rooms.perNight}
+                </span>
+                <PricePair className="relative z-[2] mt-1.5" size={masonry || list ? 'sm' : 'md'} card={room.pay?.card === false ? null : from} cash={fromCash} onPick={bookWith} compact />
+                <Link href={`${detailHref}#prenota-camera`} onClick={openDetail} className={cn('relative z-[2] mt-1.5 flex items-center gap-1.5 text-[0.72rem] text-charcoal/70 transition-colors hover:text-navy', (list || masonry) && 'hidden md:flex')}>
+                  <CalendarDays className="h-3.5 w-3.5 shrink-0 text-gold-2" strokeWidth={1.6} /> {t.booking.pick.pickDates}
+                </Link>
               </div>
             ) : (
               // no dates yet: the lowest night price ("da 55 €"), the exact total comes with the dates (room page calendar)
@@ -152,14 +170,14 @@ export function RoomCard({ room, index, query, result, delay = 0, cashPercent = 
                 <span className="min-w-0 leading-tight">
                   <span className="block text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-mist">{t.rooms.from}</span>
                   <span className="mt-0.5 flex items-baseline gap-1">
-                    <span className={cn('serif text-navy', list || masonry ? 'text-[1.35rem] md:text-[1.6rem]' : 'text-[1.6rem]')}>{money(room.fromPrice ?? room.basePrice, locale)}</span>
+                    <span className={cn('serif text-navy', list || masonry ? 'text-[1.35rem] md:text-[1.6rem]' : 'text-[1.6rem]')}>{money(from, locale)}</span>
                     <span className="text-[0.72rem] text-mist">{t.rooms.perNight}</span>
                   </span>
                   <span className={cn('mt-0.5 block text-[0.72rem] text-charcoal/70', (list || masonry) && 'hidden md:block')}>{t.booking.pick.pickDates}</span>
                 </span>
               </Link>
             )}
-            <Link href={detailHref} onClick={openDetail} aria-label={`${t.rooms.discover}: ${room.name}`} className={cn('relative z-[2] shrink-0 items-center justify-center rounded-full border border-line text-navy transition-[background-color,color,border-color] duration-500 hover:border-navy hover:bg-navy hover:text-ivory', masonry ? 'hidden h-11 w-11 sm:flex' : list ? 'flex h-9 w-9 md:h-11 md:w-11' : 'flex h-11 w-11')}>
+            <Link href={detailHref} onClick={openDetail} aria-label={`${t.rooms.discover}: ${room.name}`} className={cn('relative z-[2] shrink-0 items-center justify-center rounded-full border border-line text-navy transition-[background-color,color,border-color] duration-500 hover:border-navy hover:bg-navy hover:text-ivory', masonry ? 'hidden h-11 w-11 sm:flex' : list ? (showsPair ? 'hidden md:flex md:h-11 md:w-11' : 'flex h-9 w-9 md:h-11 md:w-11') : 'flex h-11 w-11')}>
               <ArrowUpRight className="h-4 w-4 transition-transform duration-500 group-hover/card:-translate-y-0.5 group-hover/card:translate-x-0.5" />
             </Link>
           </div>

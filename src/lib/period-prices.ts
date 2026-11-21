@@ -66,6 +66,21 @@ export function monthPrices(room: Room, periods: RatePeriod[], today: string, n 
   });
 }
 
+/**
+ * The lowest price of a night in cash in the same months as monthPrices ("da 38 € in contanti" before
+ * any date): a period's own cash price where there is one, otherwise the card price less `percent`.
+ */
+export function lowestCashNight(room: Room, periods: RatePeriod[], today: string, percent: number, n = 12): number {
+  const months = monthStarts(today, n);
+  let min = Infinity;
+  for (const d of eachNight(today, addMonths(months[months.length - 1], 1))) {
+    const r = nightlyRate(room, d, periods);
+    const c = r.cash ?? r.price * (1 - percent / 100);
+    if (c < min) min = c;
+  }
+  return Math.round((Number.isFinite(min) ? min : room.basePrice * (1 - percent / 100)) * 100) / 100;
+}
+
 /** Nights in the next `days` days whose price is not the base price (the room page calendar). */
 export function priceExceptions(room: Room, periods: RatePeriod[], from: string, to: string): Record<string, number> {
   const out: Record<string, number> = {};

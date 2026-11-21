@@ -419,6 +419,7 @@ export function BookingFlow({
                 selected={roomSlug}
                 cashPercent={cash.enabled ? cash.percent : 0}
                 method={way}
+                onMethod={setMethod}
                 onPick={(slug, w) => {
                   setRoomSlug(slug);
                   if (w) setMethod(w);

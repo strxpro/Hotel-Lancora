@@ -35,6 +35,7 @@ export function ChooseRoom({
   alternatives = [],
   selected,
   onPick,
+  onMethod,
   cashPercent,
   method = null,
 }: {
@@ -49,6 +50,8 @@ export function ChooseRoom({
   alternatives?: AvailabilityResponse['alternatives'];
   selected: string | null;
   onPick: (slug: string, way?: PayWay) => void;
+  /** a price tapped before the dates: remembered for when the guest has chosen them */
+  onMethod?: (way: PayWay) => void;
   cashPercent: number;
   /** how the guest chose to pay (shown on the room already chosen) */
   method?: PayWay | null;
@@ -58,6 +61,8 @@ export function ChooseRoom({
   const [sort, setSort] = useState<Sort>('best');
   const [picked, setPicked] = useState<string | null>(null);
   const [pickedWay, setPickedWay] = useState<PayWay | null>(null);
+  // a price tapped before the dates (shown chosen on that room)
+  const [early, setEarly] = useState<{ slug: string; way: PayWay } | null>(null);
   const [nudge, setNudge] = useState(0);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -77,6 +82,10 @@ export function ChooseRoom({
   const pick = (slug: string, way?: PayWay) => {
     if (picked) return;
     if (!hasDates) {
+      if (way) {
+        setEarly({ slug, way });
+        onMethod?.(way);
+      }
       setNudge((n) => n + 1);
       barRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
@@ -263,6 +272,20 @@ export function ChooseRoom({
                             card={r.room.pay?.card === false ? null : price(r)}
                             cash={cash ?? (r.room.pay?.card === false ? price(r) : null)}
                             selected={picked === r.room.slug ? pickedWay : selected === r.room.slug ? method : null}
+                            onPick={(way) => pick(r.room.slug, way)}
+                          />
+                        </div>
+                      ) : r.room.fromCash != null && (r.room.pay?.card === false || r.room.fromCash < (r.room.fromPrice ?? r.room.basePrice)) ? (
+                        // no dates yet: the lowest night with card and in cash, so the guest sees at once both prices
+                        <div className="w-full min-w-0 flex-1 sm:w-auto sm:min-w-[13rem]" data-testid="from-pair">
+                          <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-mist">
+                            {t.rooms.from} · {t.rooms.perNight}
+                          </p>
+                          <PricePair
+                            className="mt-2 max-w-[22rem]"
+                            card={r.room.pay?.card === false ? null : (r.room.fromPrice ?? r.room.basePrice)}
+                            cash={r.room.fromCash}
+                            selected={early ? (early.slug === r.room.slug ? early.way : null) : selected === r.room.slug ? method : null}
                             onPick={(way) => pick(r.room.slug, way)}
                           />
                         </div>

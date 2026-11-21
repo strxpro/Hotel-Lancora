@@ -8,7 +8,7 @@ import { cashPercentFor, roomPayment } from '@/lib/cash';
 import { roomRatings } from './reviews';
 import { readDb } from './db/store';
 import { onlinePeriods, onlineRoom } from '@/lib/online-price';
-import { monthPrices } from '@/lib/period-prices';
+import { lowestCashNight, monthPrices } from '@/lib/period-prices';
 
 export function popularityMap(db: DB): Map<string, number> {
   const since = addDays(todayISO(), -365);
@@ -22,7 +22,12 @@ export function toCard(r: LocalizedRoom, popularity = 0, payments?: DB['settings
   const settings = db.settings;
   // the prices the guests see (online increase on the card price, when it is on)
   const o = onlineRoom(r, settings);
-  const months = monthPrices(o, onlinePeriods(db.ratePeriods, settings), todayISO());
+  const periods = onlinePeriods(db.ratePeriods, settings);
+  const months = monthPrices(o, periods, todayISO());
+  const pay = payments ? roomPayment(r, payments) : { card: true, cash: false };
+  // the room's own cash price as an exact percent (cashPercentFor rounds it for display)
+  const ownCash = typeof o.cashPrice === 'number' && o.cashPrice > 0 && o.cashPrice < o.basePrice && o.basePrice > 0;
+  const cashPct = payments && pay.cash ? (ownCash ? (1 - o.cashPrice! / o.basePrice) * 100 : cashPercentFor(o, payments)) : 0;
   return {
     id: r.id,
     slug: r.slug,
@@ -36,10 +41,11 @@ export function toCard(r: LocalizedRoom, popularity = 0, payments?: DB['settings
     floor: r.floor,
     basePrice: o.basePrice,
     fromPrice: months.length ? Math.min(...months.map((m) => m.min)) : o.basePrice,
+    fromCash: payments && pay.cash ? lowestCashNight(o, periods, todayISO(), cashPct) : null,
     cashPrice: typeof o.cashPrice === 'number' ? o.cashPrice : null,
     // a room paid only by card shows no cash price
     cashPercent: payments && roomPayment(r, payments).cash ? cashPercentFor(o, payments) : 0,
-    pay: payments ? roomPayment(r, payments) : { card: true, cash: false },
+    pay,
     amenities: r.amenities,
     photo: r.photos[0] ?? null,
     photos: r.photos.slice(0, 5),
