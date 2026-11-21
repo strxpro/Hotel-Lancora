@@ -203,9 +203,25 @@ function summary(b: Booking, room: Room | null, settings: Settings, lang: Locale
   if (plannedCharge(b) > 0) rows.push([LATER_T[lang].row, laterFill(LATER_T[lang].when, money(plannedCharge(b), lang, 2), fmtDateLong(chargeDay(b.checkIn, chargeLaterRule(settings.payments)), lang))]);
   const tax = b.status === 'cancelled' ? null : touristTaxFor(settings.pricing?.touristTax, b.checkIn, b.checkOut, b.adults);
   if (tax) rows.push([TAX_T[lang].label, `${money(tax.total, lang, 2)} · ${taxNote(lang, tax.cash)} (${taxDetail(lang, tax, (n) => money(n, lang, 2))})`]);
-  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 6px;border-top:1px solid #E7D9C1;">${rows
+  return rowsTable(rows);
+}
+
+const rowsTable = (rows: [string, string][]) =>
+  `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 6px;border-top:1px solid #E7D9C1;">${rows
     .map(([k, v]) => `<tr><td style="padding:11px 0;border-bottom:1px solid #E7D9C1;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#8A8F90;width:38%;">${esc(k)}</td><td style="padding:11px 0;border-bottom:1px solid #E7D9C1;font-size:15px;color:#10283D;">${esc(v)}</td></tr>`)
     .join('')}</table>`;
+
+/** The stay of a booking that is not confirmed: no code, nothing paid, only what was being booked. */
+function stayRows(b: Booking, room: Room | null, lang: Locale): string {
+  const s = COPY[lang].sum;
+  const count = (n: number, [one, many]: [string, string]) => (n === 1 ? one : many.replace('{n}', String(n)));
+  return rowsTable([
+    [s.room, room ? roomTitle(room, lang) : s.toAssign],
+    [s.arrival, fmtDateLong(b.checkIn, lang)],
+    [s.departure, fmtDateLong(b.checkOut, lang)],
+    [s.guests, `${count(b.adults, s.adults)}${b.children ? ` · ${count(b.children, s.children)}` : ''}`],
+    [s.total, money(b.total, lang, 2)],
+  ]);
 }
 
 /** "Rate your room" email, in the guest's language. */
@@ -289,6 +305,28 @@ const CARE = {
     waived: 'Sin penalización: la cancelación es gratuita.',
   },
 } as const;
+
+/** After an unpaid hold ran out: the guest's way back to the same booking (dates, room, details already filled in). */
+const FINISH: Record<Locale, { subject: string; title: string; body: string; again: string; note: string; ignore: string; cta: string }> = {
+  it: { subject: 'La tua prenotazione non è finita', title: 'Finisci la tua prenotazione', body: 'Ciao {name}, hai iniziato a prenotare ma il pagamento non è stato completato, quindi la camera non è stata confermata.', again: 'Se vuoi ancora venire, con un clic ritrovi le stesse date e la stessa camera con i tuoi dati già scritti: manca solo il pagamento.', note: 'La camera non è bloccata: se nel frattempo qualcuno la prenota, ti mostriamo le altre libere.', ignore: 'Se hai cambiato idea, ignora pure questa email: non riceverai altri messaggi.', cta: 'Finisci la prenotazione' },
+  en: { subject: 'Your booking is not finished yet', title: 'Finish your booking', body: 'Hi {name}, you started a booking but the payment was not completed, so the room has not been confirmed.', again: 'If you still want to come, one click brings back the same dates and room with your details already filled in: only the payment is left.', note: 'The room is not held for you: if someone books it in the meantime, we will show you the other free rooms.', ignore: 'If you changed your mind, just ignore this email: you will not get any more messages about it.', cta: 'Finish my booking' },
+  pl: { subject: 'Twoja rezerwacja nie została dokończona', title: 'Dokończ rezerwację', body: 'Dzień dobry {name}, rezerwacja została rozpoczęta, ale płatność nie została zakończona, więc pokój nie jest potwierdzony.', again: 'Jeśli nadal chcesz przyjechać, jednym kliknięciem wrócisz do tych samych dat i pokoju z wpisanymi już danymi: zostaje tylko płatność.', note: 'Pokój nie jest zablokowany: jeśli ktoś go w międzyczasie zarezerwuje, pokażemy inne wolne pokoje.', ignore: 'Jeśli zmieniłeś zdanie, zignoruj tę wiadomość: nie dostaniesz kolejnych.', cta: 'Dokończ rezerwację' },
+  de: { subject: 'Ihre Buchung ist noch nicht abgeschlossen', title: 'Buchung abschließen', body: 'Hallo {name}, Sie haben eine Buchung begonnen, aber die Zahlung wurde nicht abgeschlossen, daher ist das Zimmer nicht bestätigt.', again: 'Wenn Sie noch kommen möchten, bringt Sie ein Klick zu denselben Daten und demselben Zimmer zurück, Ihre Angaben sind schon ausgefüllt: es fehlt nur die Zahlung.', note: 'Das Zimmer ist nicht für Sie reserviert: Wird es inzwischen gebucht, zeigen wir Ihnen die anderen freien Zimmer.', ignore: 'Wenn Sie es sich anders überlegt haben, ignorieren Sie diese E-Mail einfach: Sie erhalten keine weiteren Nachrichten dazu.', cta: 'Buchung abschließen' },
+  fr: { subject: 'Votre réservation n’est pas terminée', title: 'Terminez votre réservation', body: 'Bonjour {name}, vous avez commencé une réservation mais le paiement n’a pas été finalisé : la chambre n’est donc pas confirmée.', again: 'Si vous souhaitez toujours venir, un clic vous ramène aux mêmes dates et à la même chambre avec vos coordonnées déjà remplies : il ne reste que le paiement.', note: 'La chambre n’est pas bloquée : si quelqu’un la réserve entre-temps, nous vous montrerons les autres chambres libres.', ignore: 'Si vous avez changé d’avis, ignorez simplement cet e-mail : vous ne recevrez pas d’autres messages à ce sujet.', cta: 'Terminer la réservation' },
+  es: { subject: 'Tu reserva no está terminada', title: 'Termina tu reserva', body: 'Hola {name}, empezaste una reserva pero el pago no se completó, así que la habitación no está confirmada.', again: 'Si todavía quieres venir, con un clic vuelves a las mismas fechas y la misma habitación con tus datos ya escritos: solo falta el pago.', note: 'La habitación no está bloqueada: si alguien la reserva mientras tanto, te mostraremos las otras libres.', ignore: 'Si has cambiado de idea, ignora este correo: no recibirás más mensajes sobre ello.', cta: 'Terminar la reserva' },
+};
+
+/** The link of that e-mail: the booking page with the same stay and room, and the hold's token to fill in the details. */
+export function finishUrl(b: Booking, room: Room | null, lang: Locale): string {
+  const q = new URLSearchParams({ checkIn: b.checkIn, checkOut: b.checkOut, adults: String(b.adults) });
+  if (b.children) {
+    q.set('children', String(b.children));
+    if (b.childrenAges?.length) q.set('ages', b.childrenAges.join(','));
+  }
+  if (room) q.set('room', room.slug);
+  q.set('riprendi', b.token);
+  return siteUrl(lang, `/prenotazione?${q.toString()}`);
+}
 
 /** "Tuesday 17 November, 14:00" in the hotel's time zone. */
 const fmtDeadline = (iso: string, lang: Locale) =>
@@ -453,6 +491,15 @@ export function renderEmail(template: EmailTemplate, ctx: EmailContext): Rendere
       cta = { label: L.cta, href: guestUrl };
       break;
     }
+    case 'prenotazione_da_finire': {
+      const L = FINISH[lang] ?? FINISH.it;
+      subject = L.subject;
+      title = L.title;
+      const small = (t: string) => `<p style="font-size:13px;line-height:1.6;margin:0 0 14px;color:#6B7376;">${esc(t)}</p>`;
+      body = p(fillIn(esc(L.body), { name })) + (b ? stayRows(b, room, lang) : '') + p(esc(L.again)) + small(L.note) + small(L.ignore);
+      if (b) cta = { label: L.cta, href: finishUrl(b, room, lang) };
+      break;
+    }
     case 'richiesta_ospite':
       subject = `Nuova richiesta ospite${b ? ` · ${b.code}` : ''}`;
       title = 'Nuova richiesta dal sito';
@@ -482,4 +529,5 @@ export const TEMPLATE_LABELS: Record<EmailTemplate, string> = {
   richiesta_modifica: 'Proposta di nuove date',
   risposta_modifica: 'Richiesta dell’ospite non accettata',
   campagna: 'Campagna email',
+  prenotazione_da_finire: 'Prenotazione da finire (pagamento non concluso)',
 };

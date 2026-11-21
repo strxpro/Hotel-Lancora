@@ -95,7 +95,7 @@ function WayButton({ way, on, onPick, title, amount, decimals, size }: { way: Pa
       whileTap={{ scale: 0.95 }}
       transition={{ type: 'spring', stiffness: 420, damping: 26 }}
       className={cn(
-        'group/way relative min-w-0 cursor-pointer rounded-2xl border px-3 py-2 text-left transition-[background-color,border-color,color,box-shadow] duration-300',
+        'group/way relative min-w-0 cursor-pointer rounded-2xl border px-2.5 py-2 text-left transition-[background-color,border-color,color,box-shadow] duration-300 sm:px-3',
         card
           ? on
             ? 'border-navy bg-navy text-ivory shadow-[0_16px_30px_-18px_rgba(16,40,61,0.85)]'
@@ -105,8 +105,9 @@ function WayButton({ way, on, onPick, title, amount, decimals, size }: { way: Pa
             : 'border-sage/30 bg-sage/10 text-[#3f5a35] hover:border-sage hover:shadow-[0_14px_28px_-20px_rgba(63,90,53,0.6)]',
       )}
     >
-      <span className={cn('flex items-center gap-1.5 pr-5 text-[0.62rem] font-semibold uppercase tracking-[0.16em]', on ? 'text-ivory/85' : card ? 'text-mist' : 'text-sage')}>
-        <Icon className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{title}</span>
+      {/* phones: the words only (no icon, no round mark), so "In contanti" fits whole */}
+      <span className={cn('flex items-center gap-1.5 text-[0.6rem] font-semibold uppercase tracking-[0.08em] sm:pr-5 sm:text-[0.62rem] sm:tracking-[0.16em]', on ? 'text-ivory/85' : card ? 'text-mist' : 'text-sage')}>
+        <Icon className="hidden h-3.5 w-3.5 shrink-0 sm:block" /> <span className="truncate">{title}</span>
       </span>
       <span className={cn('serif mt-1 block truncate leading-none', size)}>
         <LiveMoney value={amount} decimals={decimals} badge={false} />
@@ -115,7 +116,7 @@ function WayButton({ way, on, onPick, title, amount, decimals, size }: { way: Pa
       <span
         aria-hidden="true"
         className={cn(
-          'absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full border transition-colors duration-300',
+          'absolute right-2 top-2 hidden h-4 w-4 items-center justify-center rounded-full border transition-colors duration-300 sm:flex',
           on ? cn('border-ivory bg-ivory', card ? 'text-navy' : 'text-sage') : card ? 'border-navy/25 group-hover/way:border-navy/60' : 'border-sage/50 group-hover/way:border-sage',
         )}
       >

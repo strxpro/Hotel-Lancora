@@ -245,6 +245,7 @@ export type EmailTemplate =
   | 'richiesta_recensione'
   | 'codice_accesso'
   | 'campagna'
+  | 'prenotazione_da_finire'
   | 'messaggio_hotel'
   | 'no_show'
   | 'carta_da_aggiornare'

@@ -493,6 +493,16 @@ export function releaseExpiredHolds(): number {
       audit(d, 'Sistema', 'hold_expired', 'booking', b.id, b.code);
     }
     if (!leads.length) return;
+    // the guest left the payment: one e-mail with the way back (same dates, room and details), never twice in a day
+    const mailed: string[] = [];
+    for (const b of leads) {
+      const mail = b.guest.email.trim().toLowerCase();
+      if (!mail || b.source !== 'sito' || b.demo || b.simulated || mailed.includes(mail)) continue;
+      if (d.outbox.some((e) => e.template === 'prenotazione_da_finire' && e.to.toLowerCase() === mail && now.getTime() - Date.parse(e.createdAt) < 24 * 3600_000)) continue;
+      queueEmail(d, 'prenotazione_da_finire', b.guest.email, { booking: b, room: d.rooms.find((r) => r.id === b.roomId) ?? null });
+      mailed.push(mail);
+    }
+    const told = (b: Booking) => (mailed.includes(b.guest.email.trim().toLowerCase()) ? '\nGli abbiamo scritto un’email con il link per finire la prenotazione.' : '');
     const line = (b: Booking) => {
       const room = d.rooms.find((r) => r.id === b.roomId);
       const when = `${fmtDate(b.checkIn, 'it', { day: 'numeric', month: 'short' })} → ${fmtDate(b.checkOut, 'it', { day: 'numeric', month: 'short' })}`;
@@ -502,12 +512,26 @@ export function releaseExpiredHolds(): number {
     const minutes = d.settings.payments.holdMinutes;
     if (leads.length === 1) {
       const b = leads[0]!;
-      notify(d, 'pagamento_non_completato', `Prenotazione non completata · ${b.code}`, `${line(b)}\nIl pagamento non è stato concluso entro ${minutes} minuti: le date sono di nuovo libere.\nContatto: ${contact(b)}`, `/admin/prenotazioni?id=${b.id}`);
+      notify(d, 'pagamento_non_completato', `Prenotazione non completata · ${b.code}`, `${line(b)}\nIl pagamento non è stato concluso entro ${minutes} minuti: le date sono di nuovo libere.\nContatto: ${contact(b)}${told(b)}`, `/admin/prenotazioni?id=${b.id}`);
     } else {
-      notify(d, 'pagamento_non_completato', `${leads.length} prenotazioni non completate`, `${leads.map((b) => `${b.code} · ${line(b)}`).join('\n')}\nPagamento non concluso entro ${minutes} minuti: le date sono di nuovo libere.`, '/admin/prenotazioni');
+      notify(d, 'pagamento_non_completato', `${leads.length} prenotazioni non completate`, `${leads.map((b) => `${b.code} · ${line(b)}`).join('\n')}\nPagamento non concluso entro ${minutes} minuti: le date sono di nuovo libere.${mailed.length ? `\nA ${mailed.length === 1 ? 'un ospite' : `${mailed.length} ospiti`} abbiamo scritto un’email con il link per finire la prenotazione.` : ''}`, '/admin/prenotazioni');
     }
   });
   return expired.length;
+}
+
+/**
+ * The link of "Finisci la prenotazione": the details the guest typed in a hold that ran out, to fill the
+ * form again. Only for an unpaid hold of the last 30 days, found by its secret token (the guest's own e-mail).
+ */
+export function resumeDetails(token: string): { firstName: string; lastName: string; email: string; phone: string; specialRequests: string } | null {
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) return null;
+  const b = readDb().bookings.find((x) => x.token === token);
+  if (!b || b.status !== 'cancelled' || !b.holdExpiresAt || b.amountPaid > 0) return null;
+  if (Date.now() - Date.parse(b.createdAt) > 30 * 86400_000) return null;
+  // the supplements line was added for the reception: the guest ticks them again
+  const requests = (b.specialRequests ?? '').split('\n\n').filter((l) => !l.startsWith('Supplementi richiesti')).join('\n\n');
+  return { firstName: b.guest.firstName, lastName: b.guest.lastName, email: b.guest.email, phone: b.guest.phone, specialRequests: requests };
 }
 
 /**

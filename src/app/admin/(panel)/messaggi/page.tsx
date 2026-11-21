@@ -13,7 +13,7 @@ export default async function MessagesPage() {
   const db = readDb();
   const sample = db.bookings.find((b) => b.status === 'confirmed' && b.roomId) ?? null;
   const room = sample ? (db.rooms.find((r) => r.id === sample.roomId) ?? null) : null;
-  const keys: EmailTemplate[] = ['conferma', 'promemoria', 'modifica', 'cancellazione', 'rimborso', 'ringraziamento', 'offerta_ritorno', 'richiesta_recensione', 'codice_accesso'];
+  const keys: EmailTemplate[] = ['conferma', 'promemoria', 'modifica', 'cancellazione', 'rimborso', 'ringraziamento', 'offerta_ritorno', 'richiesta_recensione', 'codice_accesso', 'prenotazione_da_finire'];
   const render = (k: EmailTemplate, lang: Locale) => renderEmail(k, { booking: sample, room, settings: db.settings, extra: { amount: 120, promoCode: 'DIRETTO10', reviewUrl: db.settings.hotel.googleReviewUrl || undefined, lang, code: '483920' } }).html;
   // every guest e-mail in the six languages of the site: the owner can see what each guest receives
   const templates = keys.map((k) => ({ key: k, label: TEMPLATE_LABELS[k], html: render(k, 'it'), byLang: Object.fromEntries(LOCALES.map((l) => [l, render(k, l)])) }));

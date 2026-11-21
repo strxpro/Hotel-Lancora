@@ -58,6 +58,7 @@ export function BookingFlow({
   times = null,
   extras = [],
   initialMethod = null,
+  initialGuest = null,
 }: {
   today: string;
   initialQuery: StayQuery;
@@ -75,6 +76,8 @@ export function BookingFlow({
   extras?: SiteExtra[];
   /** "?pay=cash" from a tap on the cash price of a room (home page, room page) */
   initialMethod?: 'card' | 'cash' | null;
+  /** "Finisci la prenotazione" from the e-mail: the details the guest typed last time */
+  initialGuest?: { firstName: string; lastName: string; email: string; phone: string; specialRequests: string } | null;
 }) {
   const [chosen, setChosen] = useState<string[]>([]);
   const [method, setMethod] = useState<'card' | 'cash'>(initialMethod ?? (online || !cash.enabled ? 'card' : 'cash'));
@@ -90,7 +93,7 @@ export function BookingFlow({
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [promoInput, setPromoInput] = useState('');
   const [promo, setPromo] = useState<string | null>(null);
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', specialRequests: '', privacy: false, terms: false, marketing: false });
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', specialRequests: '', ...(initialGuest ?? {}), privacy: false, terms: false, marketing: false });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [hold, setHold] = useState<Hold | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -302,6 +305,8 @@ export function BookingFlow({
 
   // back from the payment step: the held room is let go (the details typed stay), then the chosen step opens
   const back = (to: number) => {
+    // opened straight on a room (link with room and dates): the list of free rooms is loaded on the way back
+    if (to <= 1 && hasDates && !available) void loadAvailability(query);
     if (!hold) return go(to);
     const token = hold.token;
     startTransition(async () => {
@@ -934,7 +939,7 @@ function RecapCard({ i, icon: Icon, label, title, lines, edit, disabled, onEdit 
         <span className="block text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-mist">{label}</span>
         <span className="mt-0.5 block truncate font-semibold text-navy">{title}</span>
         {lines.map((l) => (
-          <span key={l} className="block truncate text-xs leading-relaxed text-charcoal/75">
+          <span key={l} className="block text-xs leading-relaxed text-charcoal/75 [overflow-wrap:anywhere]">
             {l}
           </span>
         ))}

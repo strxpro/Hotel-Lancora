@@ -7,7 +7,7 @@ import { todayISO } from '@/lib/dates';
 import { readDb } from '@/server/db/store';
 import { publicCards } from '@/server/public-data';
 import { publishableKey, simulationAllowed, stripeMode, cardPaymentsReady } from '@/server/payments/stripe';
-import { releaseExpiredHolds } from '@/server/bookings';
+import { releaseExpiredHolds, resumeDetails } from '@/server/bookings';
 import { BookingFlow } from '@/components/site/booking/booking-flow';
 import { activeExtras, extraName } from '@/lib/extras';
 import { queryFromParams } from '@/components/site/booking/query';
@@ -32,6 +32,8 @@ export default async function BookingPage({ params, searchParams }: Props) {
   const roomParam = typeof sp.room === 'string' ? sp.room : null;
   // a tap on "con carta" / "in contanti" of a room (home page, room page) comes with the way to pay
   const payParam = sp.pay === 'cash' || sp.pay === 'card' ? sp.pay : null;
+  // "Finisci la prenotazione" (the e-mail after an unpaid hold): the details typed last time
+  const resume = typeof sp.riprendi === 'string' ? resumeDetails(sp.riprendi) : null;
   const rooms = publicCards(db, locale);
   const p = db.settings.payments;
   // real site without Stripe: no pretend card payment, the guest pays at the hotel
@@ -50,6 +52,7 @@ export default async function BookingPage({ params, searchParams }: Props) {
             rooms={rooms}
             initialRoomSlug={rooms.some((r) => r.slug === roomParam) ? roomParam : null}
             initialMethod={payParam}
+            initialGuest={resume}
             payments={{ mode: p.mode, depositPercent: p.depositPercent, depositFixed: p.depositFixed, cancellationPolicy: p.cancellationPolicy, holdMinutes: p.holdMinutes, freeCancellationDays: p.freeCancellationDays, cancellationFee: p.cancellationFee }}
             provider={stripeMode() === 'off' ? 'simulated' : 'stripe'}
             stripeKey={publishableKey()}

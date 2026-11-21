@@ -101,7 +101,7 @@ export function exportIcs(db: DB, roomId: string, forSource?: string | null): st
   const d = (iso: string) => iso.replace(/-/g, '');
   const ev: string[] = [];
   for (const b of db.bookings) {
-    if (b.roomId !== roomId || b.status === 'cancelled' || b.checkOut <= today) continue;
+    if (b.roomId !== roomId || !isBookingActive(b) || b.checkOut <= today) continue;
     if (forSource && b.source === forSource) continue;
     ev.push(['BEGIN:VEVENT', `UID:booking-${b.id}@hotel-lancora`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${d(b.checkIn)}`, `DTEND;VALUE=DATE:${d(b.checkOut)}`, 'SUMMARY:Occupato', 'END:VEVENT'].join('\r\n'));
   }
