@@ -24,22 +24,24 @@ export interface DeleteTarget {
   active: boolean;
 }
 
-/** The bin on a booking: a little shake on hover. */
-export function BinButton({ onClick, label, className }: { onClick: (e: React.MouseEvent) => void; label: string; className?: string }) {
+/** The bin on a booking, in red so it is found at once ("Elimina" written beside it where there is room); a little shake on hover. */
+export function BinButton({ onClick, label, className, text = false }: { onClick: (e: React.MouseEvent) => void; label: string; className?: string; text?: boolean }) {
   return (
     <motion.button
       type="button"
       onClick={onClick}
       aria-label={label}
       title="Elimina"
-      whileHover={{ scale: 1.08, rotate: [0, -14, 11, -6, 0], transition: { duration: 0.45 } }}
-      whileTap={{ scale: 0.88 }}
+      whileHover={{ scale: 1.06 }}
+      whileTap={{ scale: 0.9 }}
       className={cn(
-        'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-white text-mist transition-colors hover:border-terracotta/50 hover:bg-terracotta/10 hover:text-terracotta focus-visible:border-terracotta focus-visible:text-terracotta',
+        'group/bin inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full border border-terracotta/35 bg-terracotta/[0.06] text-terracotta transition-colors hover:border-terracotta hover:bg-terracotta hover:text-white focus-visible:border-terracotta',
+        text ? 'px-3.5 text-xs font-semibold' : 'w-9',
         className,
       )}
     >
-      <Trash2 className="h-4 w-4" />
+      <Trash2 className="h-4 w-4 transition-transform duration-300 group-hover/bin:-rotate-12" />
+      {text && <span>Elimina</span>}
     </motion.button>
   );
 }

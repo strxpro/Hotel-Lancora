@@ -164,9 +164,7 @@ export function BookingsTable({ rows, rooms, blocks, initialFilter, openId, open
                   <th className="px-3 py-3 text-right">Totale</th>
                   <th className="px-4 py-3 text-right">Stato</th>
                   {canDelete && (
-                    <th className="w-14 py-3 pr-4">
-                      <span className="sr-only">Elimina</span>
-                    </th>
+                    <th className="py-3 pr-4 text-center">Elimina</th>
                   )}
                 </tr>
               </thead>
@@ -208,8 +206,8 @@ export function BookingsTable({ rows, rooms, blocks, initialFilter, openId, open
                       <StatusBadge row={r} />
                     </td>
                     {canDelete && (
-                      <td className="py-3 pr-4 text-right">
-                        <BinButton onClick={askDelete(r)} label={`Elimina la prenotazione di ${r.guest}`} />
+                      <td className="py-3 pr-4 text-center">
+                        <BinButton text onClick={askDelete(r)} label={`Elimina la prenotazione di ${r.guest}`} />
                       </td>
                     )}
                   </motion.tr>
