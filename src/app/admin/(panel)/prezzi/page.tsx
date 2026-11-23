@@ -32,7 +32,7 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
   const sp = await searchParams;
   const tab: Tab = TABS.find((x) => x.id === sp.tab)?.id ?? 'camere';
   const canEdit = can(user.role, 'prices.edit');
-  const rules = { singleUsePercent: db.settings.pricing?.singleUsePercent ?? 20, board: db.settings.pricing?.board ?? 'room_only', touristTax: db.settings.pricing?.touristTax, onlineMarkup: db.settings.pricing?.onlineMarkup ?? { enabled: false, percent: 1 } } as const;
+  const rules = { singleUsePercent: db.settings.pricing?.singleUsePercent ?? 20, board: db.settings.pricing?.board ?? 'room_only', touristTax: db.settings.pricing?.touristTax, onlineMarkup: { round: true, ...(db.settings.pricing?.onlineMarkup ?? { enabled: false, percent: 1 }) } } as const;
   const cashPercent = db.settings.payments.allowCashAtHotel ? db.settings.payments.cashDiscountPercent : 0;
   const tax = db.settings.pricing?.touristTax;
   const extrasOn = extrasList(db.settings.pricing?.extras).filter((e) => e.enabled).length;

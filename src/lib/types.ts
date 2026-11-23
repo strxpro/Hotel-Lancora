@@ -390,7 +390,8 @@ export interface Settings {
     /** the town's tax per adult and night, paid at the hotel (lib/tourist-tax.ts) */
     touristTax?: { enabled: boolean; amount: number; from: string; to: string; maxNights: number; cash?: boolean };
     /** "Aumento prezzi online": card prices on the site + this percent, cash unchanged (lib/online-price.ts) */
-    onlineMarkup?: { enabled: boolean; percent: number };
+    /** round: the raised prices in whole euro (45,90 € → 46 €); unset = on */
+    onlineMarkup?: { enabled: boolean; percent: number; round?: boolean };
     /** "Supplementi": optional extras paid at the hotel (lib/extras.ts); absent = the suggested ones, all off */
     extras?: import('./extras').Extra[];
   };

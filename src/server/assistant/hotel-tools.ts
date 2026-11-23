@@ -3,7 +3,7 @@ import type { DB } from '@/lib/types';
 import { addDays, fmtDate, fmtDateLong } from '@/lib/dates';
 import { money, notti, ospiti } from '@/lib/utils';
 import { cashPercentFor } from '@/lib/cash';
-import { onlineMarkup, withMarkup } from '@/lib/online-price';
+import { onlineMarkup, onlineRounding, withMarkup } from '@/lib/online-price';
 import { TAX_DEFAULT, inTaxSeason } from '@/lib/tourist-tax';
 import { arrivalsOn, departuresOn, freeRoomsOn } from '../stats';
 import { mutate } from '../db/store';
@@ -57,7 +57,7 @@ export function pricesOverview(db: DB, today: string): string {
     const what = p.mode === 'fixed' ? `${eur(p.value)}${p.cash ? ` · contanti ${eur(p.cash)}` : ''}` : `${p.value > 0 ? '+' : ''}${p.value}%`;
     lines.push(`• ${p.label} (${fmtDate(p.from)} → ${fmtDate(addDays(p.to, -1))}, ${where}): ${what}`);
   }
-  lines.push('', m ? `📈 Aumento prezzi online acceso: +${m}% sul sito (es. ${eur(100)} → ${eur(withMarkup(100, m))} con carta; contanti invariati).` : '📈 Aumento prezzi online spento: sul sito si vedono i tuoi prezzi.');
+  lines.push('', m ? `📈 Aumento prezzi online acceso: +${m}% sul sito (es. ${eur(100)} → ${eur(withMarkup(100, m, onlineRounding(db.settings)))} con carta; contanti invariati).` : '📈 Aumento prezzi online spento: sul sito si vedono i tuoi prezzi.');
   const tax = db.settings.pricing?.touristTax;
   lines.push(tax?.enabled ? `🏛 Tassa di soggiorno: ${eur(tax.amount)} a persona (adulti) a notte, dal ${mdLabel(tax.from)} al ${mdLabel(tax.to)}${tax.maxNights ? `, max ${tax.maxNights} notti` : ''}, si paga in hotel.` : '🏛 Tassa di soggiorno spenta.');
   lines.push('', 'Per cambiare: “prezzo di agosto 150 euro, 140 in contanti”, oppure Prezzi nel pannello.');
@@ -94,12 +94,12 @@ export async function paymentsStatus(db: DB): Promise<string> {
 export type MarkupArgs = { enabled: boolean; percent?: number };
 export function markupSummary(a: MarkupArgs, db: DB): string {
   const pct = a.percent ?? db.settings.pricing?.onlineMarkup?.percent ?? 1;
-  return a.enabled ? `Accendere l’aumento prezzi online del ${pct}%? Sul sito ${eur(100)} diventa ${eur(withMarkup(100, pct))} con carta; i prezzi in contanti restano uguali.` : 'Spegnere l’aumento prezzi online? Sul sito torneranno i tuoi prezzi di sempre.';
+  return a.enabled ? `Accendere l’aumento prezzi online del ${pct}%? Sul sito ${eur(100)} diventa ${eur(withMarkup(100, pct, db.settings.pricing?.onlineMarkup?.round !== false))} con carta; i prezzi in contanti restano uguali.` : 'Spegnere l’aumento prezzi online? Sul sito torneranno i tuoi prezzi di sempre.';
 }
 export function setMarkup(a: MarkupArgs, actor: string): string {
   return mutate((db) => {
     const pct = Math.min(20, Math.max(0.5, a.percent ?? db.settings.pricing?.onlineMarkup?.percent ?? 1));
-    db.settings.pricing = { ...(db.settings.pricing ?? { singleUsePercent: 20, board: 'room_only' }), onlineMarkup: { enabled: a.enabled, percent: pct } };
+    db.settings.pricing = { ...(db.settings.pricing ?? { singleUsePercent: 20, board: 'room_only' }), onlineMarkup: { ...db.settings.pricing?.onlineMarkup, enabled: a.enabled, percent: pct } };
     audit(db, actor, 'settings', 'pricing', null, a.enabled ? `Prezzi online +${pct}%` : 'Prezzi online senza aumento');
     return a.enabled ? `Fatto: sul sito i prezzi con carta sono +${pct}%. I contanti non cambiano.` : 'Fatto: aumento prezzi online spento.';
   });

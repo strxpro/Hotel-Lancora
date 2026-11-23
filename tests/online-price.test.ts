@@ -11,7 +11,8 @@ import type { RatePeriod, Room } from '../src/lib/types';
  * hotel does not move, and the owner's own prices stay as they were.
  */
 const payments = { allowCashAtHotel: true, cashDiscountPercent: 5 };
-const on = (percent: number) => ({ payments, pricing: { onlineMarkup: { enabled: true, percent } } });
+// to the cent (the switch "Arrotonda all’euro" off): whole euro is covered in online-round.test.ts
+const on = (percent: number) => ({ payments, pricing: { onlineMarkup: { enabled: true, percent, round: false } } });
 const room = { id: 'r1', basePrice: 100, cashPrice: null } as unknown as Room;
 const cashTotal = (r: Room, from: string, to: string, periods: RatePeriod[]) => {
   const q = quoteStay(r, from, to, periods);

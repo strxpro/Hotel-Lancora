@@ -6,6 +6,7 @@ import type { MonthPrice } from '@/lib/period-prices';
 import { addDays, fmtDate, fmtDateTime, todayISO } from '@/lib/dates';
 import { cancelDeadline, cancelFeeAmount, cancelText } from '@/lib/cancellation';
 import { cn, money } from '@/lib/utils';
+import { withMarkup } from '@/lib/online-price';
 import { TAX_DEFAULT, taxNote, touristTaxFor, type TouristTax } from '@/lib/tourist-tax';
 import { Badge, Button, Card, Dialog, Empty, Field, NumInput, Segmented, StickyBar, Toggle, useAction } from './ui';
 import { NiceSelect } from './nice-select';
@@ -448,7 +449,7 @@ function DayMonth({ value, onChange, disabled, label }: { value: string; onChang
   );
 }
 
-export function PricingRulesForm({ initial, cashPercent, canEdit, part = 'all' }: { initial: { singleUsePercent: number; board: 'room_only' | 'breakfast'; touristTax?: TouristTax; onlineMarkup: { enabled: boolean; percent: number } }; cashPercent: number; canEdit: boolean; part?: 'all' | 'rules' | 'tax' }) {
+export function PricingRulesForm({ initial, cashPercent, canEdit, part = 'all' }: { initial: { singleUsePercent: number; board: 'room_only' | 'breakfast'; touristTax?: TouristTax; onlineMarkup: { enabled: boolean; round?: boolean; percent: number } }; cashPercent: number; canEdit: boolean; part?: 'all' | 'rules' | 'tax' }) {
   const [f, setF] = useState({ ...initial, touristTax: initial.touristTax ?? TAX_DEFAULT });
   const mk = f.onlineMarkup;
   const setMk = (patch: Partial<typeof mk>) => setF({ ...f, onlineMarkup: { ...mk, ...patch } });
@@ -460,6 +461,8 @@ export function PricingRulesForm({ initial, cashPercent, canEdit, part = 'all' }
   const changed = JSON.stringify(f) !== JSON.stringify({ ...initial, touristTax: initial.touristTax ?? TAX_DEFAULT });
   const { run, pending } = useAction();
   const sample = 100;
+  // a price that shows the cents the increase brings (65 € + 2% = 66,30 €)
+  const roundSample = 65;
   return (
     <Card title={part === 'tax' ? 'Tassa di soggiorno' : 'Tariffe e sconti'}>
       {part !== 'tax' && (
@@ -529,12 +532,25 @@ export function PricingRulesForm({ initial, cashPercent, canEdit, part = 'all' }
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="rounded-full border border-line bg-ivory px-3 py-1 text-charcoal/70 line-through decoration-gold/70">{money(sample, 'it', 2)}</span>
               <span className="text-gold-2">→</span>
-              <span className="rounded-full bg-navy px-3 py-1 font-semibold text-ivory">{money(Math.round(sample * (1 + mk.percent / 100) * 100) / 100, 'it', 2)} con carta</span>
+              <span className="rounded-full bg-navy px-3 py-1 font-semibold text-ivory">{money(withMarkup(sample, mk.percent, mk.round !== false), 'it', mk.round !== false ? 0 : 2)} con carta</span>
               {cashPercent > 0 && <span className="rounded-full border border-line bg-ivory px-3 py-1 text-navy">{money(Math.round(sample * (1 - cashPercent / 100) * 100) / 100, 'it', 2)} in contanti, come prima</span>}
             </div>
           </div>
         )}
-        <p className="mt-3 text-[0.75rem] text-charcoal/70">{mk.enabled && mk.percent > 0 ? `Acceso: sul sito ogni prezzo con carta è più alto del ${mk.percent}% (camere, ricerca, prenotazione, chat).` : 'Spento: sul sito si vedono esattamente i prezzi che scrivi.'}</p>
+        {mk.enabled && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-4" data-testid="online-round">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-navy">Arrotonda all’euro</p>
+              <p className="text-[0.75rem] text-mist">
+                {mk.round !== false
+                  ? `Acceso: niente centesimi, per esempio ${money(roundSample, 'it', 2)} → ${money(withMarkup(roundSample, mk.percent, true), 'it', 0)} invece di ${money(withMarkup(roundSample, mk.percent), 'it', 2)}.`
+                  : `Spento: i prezzi restano con i centesimi, per esempio ${money(roundSample, 'it', 2)} → ${money(withMarkup(roundSample, mk.percent), 'it', 2)}.`}
+              </p>
+            </div>
+            <Toggle checked={mk.round !== false} disabled={!canEdit} onChange={(v) => setMk({ round: v })} label="Arrotonda all’euro" />
+          </div>
+        )}
+        <p className="mt-3 text-[0.75rem] text-charcoal/70">{mk.enabled && mk.percent > 0 ? `Acceso: sul sito ogni prezzo con carta è più alto del ${mk.percent}%${mk.round !== false ? ', arrotondato all’euro' : ''} (camere, ricerca, prenotazione, chat).` : 'Spento: sul sito si vedono esattamente i prezzi che scrivi.'}</p>
       </div>
       </>
       )}
