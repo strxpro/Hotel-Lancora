@@ -6,6 +6,8 @@
  * Only the SHA-256 of the password is kept here. SITE_PASSWORD (env) replaces it; SITE_LOCK=off turns
  * the lock off without a new version of the code.
  */
+import { visitorLang } from './visitor-lang';
+
 export const GATE_COOKIE = 'lancora_gate';
 const DEFAULT_HASH = '0367755d635831726ad67e0bb015e633ed6f27b7f5399868704cd1f52bf65d07';
 
@@ -61,17 +63,14 @@ export function bookingUrl(lang: GateLang): string | null {
 }
 
 /**
- * The visitor's language: the address first (/en/…, /pl/…), then the browser's languages
- * (Accept-Language), else Italian.
+ * The visitor's language: the address first (/en/…, /pl/…), then the language chosen earlier on the
+ * site, then the browser and the country the visit comes from (lib/visitor-lang.ts).
  */
-export function gateLang(pathname: string, acceptLanguage: string | null): GateLang {
+export function gateLang(pathname: string, acceptLanguage: string | null, country: string | null = null, chosen: string | null = null): GateLang {
   const seg = pathname.split('/')[1]?.toLowerCase();
   if (seg && (LANGS as string[]).includes(seg)) return seg as GateLang;
-  for (const part of (acceptLanguage ?? '').split(',')) {
-    const code = part.trim().slice(0, 2).toLowerCase();
-    if ((LANGS as string[]).includes(code)) return code as GateLang;
-  }
-  return 'it';
+  if (chosen && (LANGS as string[]).includes(chosen)) return chosen as GateLang;
+  return visitorLang(acceptLanguage, country);
 }
 
 /** The page that asks for the password (plain HTML: it works before anything else of the site loads). */
