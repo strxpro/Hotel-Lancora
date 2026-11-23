@@ -285,6 +285,69 @@ export async function sendMail(m: OutMail): Promise<{ to: string; subject: strin
 }
 
 /* ------------------------------------------------------------------ */
+/* the site's notices to the hotel's own Gmail                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * An e-mail the hotel's Gmail sends to its own address (a new booking) can end up only in "Inviati":
+ * Gmail does not always put in "Posta in arrivo" what you send to yourself. This finds it again and
+ * makes sure it is in "Posta in arrivo" and unread; if Gmail has not filed it at all, a copy is put there.
+ */
+export async function keepInInbox(to: string, messageId: string, mail: { from: string; to: string; subject: string; html: string; text: string }): Promise<'inbox' | 'labelled' | 'added' | 'skipped'> {
+  const c = mailboxConfig();
+  if (!c || fakeMode() || c.provider !== 'gmail' || c.email.trim().toLowerCase() !== to.trim().toLowerCase()) return 'skipped';
+  const q = { gmraw: `rfc822msgid:${messageId.replace(/^<|>$/g, '')}` };
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  return withImap(c, async (client) => {
+    const uidsIn = async (path: string) => {
+      const lock = await client.getMailboxLock(path);
+      try {
+        return ((await client.search(q, { uid: true })) || []) as number[];
+      } finally {
+        lock.release();
+      }
+    };
+    const unread = async (uids: number[]) => {
+      const lock = await client.getMailboxLock('INBOX');
+      try {
+        await client.messageFlagsRemove(uids.join(','), ['\\Seen'], { uid: true });
+      } finally {
+        lock.release();
+      }
+    };
+    const all = (await client.list()).find((x) => x.specialUse === '\\All')?.path ?? null;
+    // Gmail files the message within a few seconds of accepting it
+    for (const ms of [1200, 2000, 2500]) {
+      await pause(ms);
+      const inbox = await uidsIn('INBOX');
+      if (inbox.length) {
+        await unread(inbox);
+        return 'inbox';
+      }
+      const kept = all ? await uidsIn(all) : [];
+      if (kept.length && all) {
+        // only in "Inviati" / "Tutti i messaggi": adding it to INBOX is Gmail's "Sposta in Posta in arrivo"
+        const lock = await client.getMailboxLock(all);
+        try {
+          await client.messageCopy(kept.join(','), 'INBOX', { uid: true });
+        } finally {
+          lock.release();
+        }
+        const now = await uidsIn('INBOX');
+        if (now.length) {
+          await unread(now);
+          return 'labelled';
+        }
+      }
+    }
+    const MailComposer = (await import('nodemailer/lib/mail-composer')).default;
+    const raw = await new MailComposer({ ...mail, messageId }).compile().build();
+    await client.append('INBOX', raw, []);
+    return 'added';
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* unread count for the side menu (never slows a page down)            */
 /* ------------------------------------------------------------------ */
 

@@ -39,7 +39,8 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
 
 /**
  * Records an in-panel notification and, if enabled and configured, forwards it to every
- * linked Telegram chat after the database write succeeded.
+ * linked Telegram chat after the database write succeeded. A new or cancelled booking also
+ * goes by e-mail to the hotel's own address (see mailHotel).
  */
 export function notify(db: DB, type: NotificationType, title: string, body: string, href: string | null = null): AppNotification {
   // a type added after the settings were saved starts switched on
@@ -57,6 +58,7 @@ export function notify(db: DB, type: NotificationType, title: string, body: stri
   };
   db.notifications.unshift(n);
   if (db.notifications.length > 300) db.notifications.length = 300;
+  mailHotel(db, type, title, body, href);
   if (enabled && configured) {
     const chats = db.telegram.linkedChats.map((c) => c.chatId);
     afterCommit(async () => {
@@ -78,6 +80,27 @@ export function notify(db: DB, type: NotificationType, title: string, body: stri
     });
   }
   return n;
+}
+
+/**
+ * A new booking or a cancellation, by e-mail to the hotel's address (Impostazioni → Hotel), with
+ * the booking's details. Only notices about one booking of the hotel (not the portals' calendars,
+ * which write to the hotel themselves), never for simulations or demo data, once per booking and kind.
+ */
+function mailHotel(db: DB, type: NotificationType, title: string, body: string, href: string | null): void {
+  if (type !== 'nuova_prenotazione' && type !== 'prenotazione_cancellata') return;
+  const to = db.settings.hotel.email?.trim();
+  const id = href ? /[?&]id=([^&#]+)/.exec(href)?.[1] : undefined;
+  const b = id ? db.bookings.find((x) => x.id === id) : undefined;
+  if (!to || !b || b.simulated || b.demo) return;
+  const kind = type === 'nuova_prenotazione' ? 'nuova' : 'cancellata';
+  // "nuova" is a booking made just now (new dates accepted on an old booking are not a new booking)
+  if (kind === 'nuova' && Date.now() - Date.parse(b.createdAt) > 60 * 60_000) return;
+  // a cancellation can be announced twice (the reason, then the cancellation itself): one e-mail is enough
+  const heading = kind === 'nuova' ? 'Nuova prenotazione' : 'Prenotazione cancellata';
+  if (db.outbox.some((e) => e.template === 'avviso_hotel' && e.bookingId === b.id && e.html.includes(`>${heading}</h1>`))) return;
+  const room = db.rooms.find((r) => r.id === b.roomId) ?? null;
+  queueEmail(db, 'avviso_hotel', to, { booking: b, room, extra: { notice: { kind, title, body, href } } });
 }
 
 /**
@@ -134,7 +157,16 @@ export async function deliverEmail(id: string): Promise<{ ok: boolean; error?: s
     // the language the e-mail is written in: every template declares it in <html lang="…">
     const lang = /<html lang="([a-z]{2})"/.exec(email.html)?.[1] ?? 'it';
     const meta = { id: email.id, template: email.template, lang, bookingCode: b?.code ?? null, guestName: b ? `${b.guest.firstName} ${b.guest.lastName}`.trim() : null, hotel: db.settings.hotel.name };
-    await sendEmail({ to: email.to, subject: email.subject, html: email.html, text: email.text, unsubscribe: email.listUnsubscribe ?? null, replyTo: db.settings.hotel.email, meta });
+    // a notice to the hotel answers to the guest; every other e-mail answers to the hotel
+    const guest = email.template === 'avviso_hotel' ? b?.guest.email : undefined;
+    const messageId = `<${email.id}.${Date.now().toString(36)}@lancora.hotel>`;
+    const transport = emailTransport();
+    await sendEmail({ to: email.to, subject: email.subject, html: email.html, text: email.text, unsubscribe: email.listUnsubscribe ?? null, replyTo: guest || db.settings.hotel.email, meta, messageId }, transport);
+    // sent from the hotel's own Gmail to itself: make sure it is in "Posta in arrivo", unread
+    if (email.template === 'avviso_hotel' && transport?.kind === 'smtp' && transport.source === 'panel') {
+      const { keepInInbox } = await import('./mail/mailbox');
+      await keepInInbox(email.to, messageId, { from: transport.smtp.from, to: email.to, subject: email.subject, html: email.html, text: email.text }).catch((err) => console.error('[mail] avviso in arrivo', (err as Error).message));
+    }
     mutate((d) => {
       const e = d.outbox.find((x) => x.id === id);
       if (e) Object.assign(e, { status: 'sent', sentAt: new Date().toISOString(), error: null });

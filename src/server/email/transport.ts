@@ -9,6 +9,8 @@ export type OutgoingEmail = {
   /** promotional (has an unsubscribe link) vs service e-mail */
   unsubscribe?: string | null;
   replyTo?: string;
+  /** the Message-ID to give the e-mail (SMTP): lets the site find it again in the hotel's mailbox */
+  messageId?: string;
   /** what the e-mail is, for automations (Make.com routes on template and language) */
   meta?: { id: string; template: string; lang: string; bookingCode: string | null; guestName: string | null; hotel: string };
 };
@@ -28,7 +30,7 @@ export async function sendEmail(mail: OutgoingEmail, t: EmailTransport | null = 
     const nodemailer = await import('nodemailer');
     const c = t.smtp;
     const transport = nodemailer.createTransport({ host: c.host, port: c.port, secure: c.secure, auth: c.user ? { user: c.user, pass: c.pass } : undefined });
-    await transport.sendMail({ from: c.from, to: mail.to, subject: mail.subject, html: mail.html, text: mail.text, ...(mail.replyTo ? { replyTo: mail.replyTo } : {}), ...(headers ? { headers } : {}) });
+    await transport.sendMail({ from: c.from, to: mail.to, subject: mail.subject, html: mail.html, text: mail.text, ...(mail.replyTo ? { replyTo: mail.replyTo } : {}), ...(headers ? { headers } : {}), ...(mail.messageId ? { messageId: mail.messageId } : {}) });
     return;
   }
 

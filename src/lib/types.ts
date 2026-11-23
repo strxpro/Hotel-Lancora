@@ -246,6 +246,8 @@ export type EmailTemplate =
   | 'codice_accesso'
   | 'campagna'
   | 'prenotazione_da_finire'
+  /** to the hotel's own address: a new booking or a cancellation */
+  | 'avviso_hotel'
   | 'messaggio_hotel'
   | 'no_show'
   | 'carta_da_aggiornare'

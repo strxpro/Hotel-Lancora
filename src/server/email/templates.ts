@@ -25,6 +25,8 @@ export interface EmailContext {
     checkIn?: string; checkOut?: string; total?: number; kind?: 'dates' | 'free_cancel';
     /** refund: back on the card it was paid with, given back by hand (cash, transfer), or both; and which card */
     refundVia?: 'card' | 'hand' | 'mixed'; card?: string;
+    /** avviso_hotel: the notice the panel and Telegram got, by e-mail to the hotel */
+    notice?: { kind: 'nuova' | 'cancellata'; title: string; body: string; href: string | null };
   };
 }
 
@@ -211,6 +213,35 @@ const rowsTable = (rows: [string, string][]) =>
     .map(([k, v]) => `<tr><td style="padding:11px 0;border-bottom:1px solid #E7D9C1;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#8A8F90;width:38%;">${esc(k)}</td><td style="padding:11px 0;border-bottom:1px solid #E7D9C1;font-size:15px;color:#10283D;">${esc(v)}</td></tr>`)
     .join('')}</table>`;
 
+const HOW_PAID: Record<NonNullable<Booking['paymentMethod']>, string> = { card: 'Carta online', cash: 'In contanti all’arrivo', transfer: 'Bonifico', ota: 'Tramite il portale' };
+const FROM: Record<Booking['source'], string> = { sito: 'Sito web', telefono: 'Telefono', email: 'Email', walkin: 'Di persona', booking: 'Booking.com', expedia: 'Expedia', altro_ota: 'Altro portale' };
+
+/** The booking for the hotel (avviso_hotel): guest and contacts, room with its number, money. */
+function hotelRows(b: Booking, room: Room | null, settings: Settings): string {
+  const nights = diffDays(b.checkIn, b.checkOut);
+  const later = plannedCharge(b);
+  const paid = b.paymentMethod
+    ? HOW_PAID[b.paymentMethod] + (later > 0 ? ` · carta salvata, ${money(later, 'it', 2)} da addebitare il ${fmtDateLong(chargeDay(b.checkIn, chargeLaterRule(settings.payments)), 'it')}` : '')
+    : b.amountPaid > 0 ? 'Pagato' : '—';
+  const rows: [string, string][] = [
+    ['Codice', b.code],
+    ['Ospite', `${b.guest.firstName} ${b.guest.lastName}`.trim()],
+    ...(b.guest.email ? [['Email', b.guest.email] as [string, string]] : []),
+    ...(b.guest.phone ? [['Telefono', b.guest.phone] as [string, string]] : []),
+    ['Camera', room ? `${room.number ? `N° ${room.number} · ` : ''}${titleWithoutNumber(room.text.title || room.name, room.number) || room.name}` : 'Da assegnare'],
+    ['Arrivo', fmtDateLong(b.checkIn, 'it')],
+    ['Partenza', fmtDateLong(b.checkOut, 'it')],
+    ['Notti', String(nights)],
+    ['Ospiti', `${b.adults === 1 ? '1 adulto' : `${b.adults} adulti`}${b.children ? ` · ${b.children === 1 ? '1 bambino' : `${b.children} bambini`}` : ''}`],
+    ['Totale', money(b.total, 'it', 2)],
+    ['Già pagato', money(b.amountPaid, 'it', 2)],
+    ['Pagamento', paid],
+    ['Arrivata da', FROM[b.source] ?? b.source],
+  ];
+  if (b.specialRequests?.trim()) rows.push(['Richieste', b.specialRequests.trim()]);
+  return rowsTable(rows);
+}
+
 /** The stay of a booking that is not confirmed: no code, nothing paid, only what was being booked. */
 function stayRows(b: Booking, room: Room | null, lang: Locale): string {
   const s = COPY[lang].sum;
@@ -338,7 +369,7 @@ const quote = (text: string) => `<div style="margin:18px 0 20px;padding:16px 18p
 export function renderEmail(template: EmailTemplate, ctx: EmailContext): RenderedEmail {
   const { booking: b, room, settings, extra } = ctx;
   // messages to the hotel stay in Italian; every guest gets their own language
-  const lang: Locale = template === 'richiesta_ospite' ? 'it' : isLocaleCode(extra?.lang) ? extra.lang : b ? guestLang(b.guest) : 'it';
+  const lang: Locale = template === 'richiesta_ospite' || template === 'avviso_hotel' ? 'it' : isLocaleCode(extra?.lang) ? extra.lang : b ? guestLang(b.guest) : 'it';
   const c = COPY[lang];
   const nameRaw = b?.guest.firstName || c.dear;
   const name = esc(nameRaw);
@@ -500,6 +531,16 @@ export function renderEmail(template: EmailTemplate, ctx: EmailContext): Rendere
       if (b) cta = { label: L.cta, href: finishUrl(b, room, lang) };
       break;
     }
+    case 'avviso_hotel': {
+      // to the hotel itself, in Italian: everything needed to see the booking at a glance, room number included
+      const n = extra?.notice;
+      const cancelled = n ? n.kind === 'cancellata' : b?.status === 'cancelled';
+      subject = n?.title ?? `${cancelled ? 'Prenotazione cancellata' : 'Nuova prenotazione'}${b ? ` · ${b.code}` : ''}`;
+      title = cancelled ? 'Prenotazione cancellata' : 'Nuova prenotazione';
+      body = (n?.body ? p(esc(n.body).split('\n').join('<br>')) : '') + (b ? hotelRows(b, room, settings) : '');
+      cta = { label: 'Apri nel pannello', href: `${appUrl()}${n?.href ?? (b ? `/admin/prenotazioni?id=${b.id}` : '/admin/prenotazioni')}` };
+      break;
+    }
     case 'richiesta_ospite':
       subject = `Nuova richiesta ospite${b ? ` · ${b.code}` : ''}`;
       title = 'Nuova richiesta dal sito';
@@ -530,4 +571,5 @@ export const TEMPLATE_LABELS: Record<EmailTemplate, string> = {
   risposta_modifica: 'Richiesta dell’ospite non accettata',
   campagna: 'Campagna email',
   prenotazione_da_finire: 'Prenotazione da finire (pagamento non concluso)',
+  avviso_hotel: 'Avviso all’hotel (nuova prenotazione o cancellazione)',
 };
