@@ -26,7 +26,7 @@ export interface EmailContext {
     /** refund: back on the card it was paid with, given back by hand (cash, transfer), or both; and which card */
     refundVia?: 'card' | 'hand' | 'mixed'; card?: string;
     /** avviso_hotel: the notice the panel and Telegram got, by e-mail to the hotel */
-    notice?: { kind: 'nuova' | 'cancellata' | 'non_completata'; title: string; body: string; href: string | null };
+    notice?: { kind: keyof typeof NOTICE_HEADING; title: string; body: string; href: string | null };
   };
 }
 
@@ -214,7 +214,7 @@ const rowsTable = (rows: [string, string][]) =>
     .join('')}</table>`;
 
 /** The heading of each notice to the hotel (the site also uses it to send each one only once). */
-export const NOTICE_HEADING = { nuova: 'Nuova prenotazione', cancellata: 'Prenotazione cancellata', non_completata: 'Prenotazione non completata' } as const;
+export const NOTICE_HEADING = { nuova: 'Nuova prenotazione', cancellata: 'Prenotazione cancellata', non_completata: 'Prenotazione non completata', bonifici: 'Bonifici immediati attivati' } as const;
 
 const HOW_PAID: Record<NonNullable<Booking['paymentMethod']>, string> = { card: 'Carta online', cash: 'In contanti all’arrivo', transfer: 'Bonifico', ota: 'Tramite il portale' };
 const FROM: Record<Booking['source'], string> = { sito: 'Sito web', telefono: 'Telefono', email: 'Email', walkin: 'Di persona', booking: 'Booking.com', expedia: 'Expedia', altro_ota: 'Altro portale' };

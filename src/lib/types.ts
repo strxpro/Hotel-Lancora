@@ -410,6 +410,8 @@ export interface Settings {
     direct?: boolean;
     /** every card payment goes on to the hotel's debit card at once (Stripe Instant Payouts, with its cost) */
     autoInstant?: boolean;
+    /** when Stripe turned Instant Payouts on for the hotel's account (the hotel was told then, once) */
+    instantSince?: string | null;
     businessName: string | null;
     bankLast4: string | null;
     requirements: string[];

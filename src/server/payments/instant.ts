@@ -229,3 +229,43 @@ export function autoInstantAfterPayment(): void {
   };
   ga.__lancoraAutoInstant = (ga.__lancoraAutoInstant ?? Promise.resolve()).then(run, run).catch((e) => console.error('[instant]', (e as Error).message));
 }
+
+
+/**
+ * Stripe turns Instant Payouts on for an account by itself, after some weeks of payments (a new
+ * account is not eligible). Its balance shows `instant_available` only from then on. The hour it
+ * appears, the hotel is told once, on Telegram and by e-mail, with what to do next.
+ */
+export function instantJustEnabled(balance: Pick<Stripe.Balance, 'instant_available'>, since: string | null | undefined): boolean {
+  return !since && Array.isArray(balance.instant_available);
+}
+
+type NoticeHelpers = Pick<typeof import('../events'), 'audit' | 'notify' | 'queueEmail'>;
+
+/** The notice itself (panel, Telegram, e-mail to the hotel) and the date, so it is never repeated. Inside mutate(). */
+export function announceInstantPayouts(d: DB, h: NoticeHelpers): boolean {
+  const c = d.settings.stripeConnect;
+  if (c.instantSince) return false;
+  c.instantSince = new Date().toISOString();
+  const title = 'Stripe ha attivato i bonifici immediati';
+  const body = `Da adesso i soldi pagati con la carta possono arrivare in pochi minuti, anche di sabato e domenica.\nUltimo passo, su Stripe: Impostazioni → Conti collegati e bonifici → Aggiungi carta di debito (una carta di debito Visa o Mastercard dell’hotel).\n${c.autoInstant ? 'Poi il pannello li manda da solo, subito dopo ogni pagamento.' : 'Poi in Pagamenti → “Ricevi subito” li ricevi quando vuoi.'}`;
+  h.notify(d, 'nuovo_pagamento', title, body, '/admin/pagamenti');
+  const to = d.settings.hotel.email?.trim();
+  if (to) h.queueEmail(d, 'avviso_hotel', to, { booking: null, room: null, extra: { notice: { kind: 'bonifici', title, body, href: '/admin/pagamenti' } } });
+  h.audit(d, 'Sistema', 'instant_payout_enabled', 'settings', null, 'Stripe ha attivato i bonifici immediati: avviso inviato');
+  return true;
+}
+
+/** Hourly (api/cron/hourly): looks at the hotel's balance on Stripe, live keys only. */
+export async function watchInstantEnabled(): Promise<string> {
+  const { readDb, mutate } = await import('../db/store');
+  const db = readDb();
+  if (db.settings.stripeConnect.instantSince) return 'già attivi';
+  const acct = account(db);
+  if (!acct || stripeMode() !== 'live') return 'saltato';
+  const balance = await withTimeout(stripe().balance.retrieve({}, on(acct)), 7000);
+  if (!instantJustEnabled(balance, null)) return 'non ancora';
+  const ev = await import('../events');
+  const sent = mutate((d) => announceInstantPayouts(d, ev));
+  return sent ? 'attivati: avviso inviato' : 'già attivi';
+}

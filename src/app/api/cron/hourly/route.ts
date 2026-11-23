@@ -34,6 +34,8 @@ export async function GET(req: Request) {
       await syncConnectStatus(true);
       return `${linked} · conto ${readDb().settings.stripeConnect.chargesEnabled ? 'attivo' : 'in verifica'}`;
     },
+    // Stripe turned Instant Payouts on for the hotel: told once (Telegram + e-mail), with what to do
+    instant: async () => (await import('@/server/payments/instant')).watchInstantEnabled(),
     telegram: async () => {
       const base = stablePublicUrl();
       const secret = (process.env.TELEGRAM_WEBHOOK_SECRET ?? '').trim();
