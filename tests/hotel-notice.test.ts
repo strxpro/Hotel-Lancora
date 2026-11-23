@@ -70,4 +70,26 @@ test('a new booking and its cancellation reach the hotel by e-mail, once each; s
   // portals' calendar notices (no booking of the hotel) are not e-mailed
   mutate((x) => notify(x, 'nuova_prenotazione', 'Booking.com: camera 101 occupata', 'Dal 1 al 3', '/admin/disponibilita'));
   assert.equal(notices().length, 2);
+
+  // a booking left unpaid: the hotel gets the guest's contacts to call them back
+  mutate((x) => {
+    x.bookings.push({ ...hold('u1'), holdExpiresAt: new Date(Date.now() - 60_000).toISOString() });
+  });
+  const { releaseExpiredHolds } = await import('../src/server/bookings');
+  releaseExpiredHolds();
+  const unpaid = notices().find((e) => e.bookingId === 'u1');
+  assert.ok(unpaid, 'unpaid booking e-mailed to the hotel');
+  assert.match(unpaid.html, />Prenotazione non completata<\/h1>/);
+  assert.ok(unpaid.html.includes('+39 333 1234567'));
+
+  // the Telegram message: one thing per line, guest in bold, the panel button comes separately
+  const { bookingText } = await import('../src/server/events');
+  d = readDb();
+  const text = bookingText(d, 'nuova_prenotazione', 'Nuova prenotazione dal sito · LA-N1', '', d.bookings.find((x) => x.id === 'n1')!);
+  console.log(text);
+  assert.match(text, /👤 <b>Salvatore Scano<\/b>/);
+  assert.match(text, /🛏 Camera /);
+  assert.match(text, /📅 .+ · \d+ nott[ei] · 2 ospiti/);
+  assert.match(text, /💶 .+ in contanti all’arrivo/);
+  assert.match(text, /📞 \+39 333 1234567/);
 });

@@ -26,7 +26,7 @@ async function call<T = unknown>(method: string, body: Record<string, unknown>, 
   return json.result as T;
 }
 
-export type InlineButton = { text: string; callback_data: string };
+export type InlineButton = { text: string; callback_data: string } | { text: string; url: string };
 /** Buttons under the typing field (private chats): each one sends its own text. */
 export type ReplyKeyboard = { keyboard: { text: string }[][]; resize_keyboard?: boolean; is_persistent?: boolean; input_field_placeholder?: string };
 export type SendOpts = { replyTo?: number; keyboard?: ReplyKeyboard };

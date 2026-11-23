@@ -26,7 +26,7 @@ export interface EmailContext {
     /** refund: back on the card it was paid with, given back by hand (cash, transfer), or both; and which card */
     refundVia?: 'card' | 'hand' | 'mixed'; card?: string;
     /** avviso_hotel: the notice the panel and Telegram got, by e-mail to the hotel */
-    notice?: { kind: 'nuova' | 'cancellata'; title: string; body: string; href: string | null };
+    notice?: { kind: 'nuova' | 'cancellata' | 'non_completata'; title: string; body: string; href: string | null };
   };
 }
 
@@ -212,6 +212,9 @@ const rowsTable = (rows: [string, string][]) =>
   `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:22px 0 6px;border-top:1px solid #E7D9C1;">${rows
     .map(([k, v]) => `<tr><td style="padding:11px 0;border-bottom:1px solid #E7D9C1;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#8A8F90;width:38%;">${esc(k)}</td><td style="padding:11px 0;border-bottom:1px solid #E7D9C1;font-size:15px;color:#10283D;">${esc(v)}</td></tr>`)
     .join('')}</table>`;
+
+/** The heading of each notice to the hotel (the site also uses it to send each one only once). */
+export const NOTICE_HEADING = { nuova: 'Nuova prenotazione', cancellata: 'Prenotazione cancellata', non_completata: 'Prenotazione non completata' } as const;
 
 const HOW_PAID: Record<NonNullable<Booking['paymentMethod']>, string> = { card: 'Carta online', cash: 'In contanti all’arrivo', transfer: 'Bonifico', ota: 'Tramite il portale' };
 const FROM: Record<Booking['source'], string> = { sito: 'Sito web', telefono: 'Telefono', email: 'Email', walkin: 'Di persona', booking: 'Booking.com', expedia: 'Expedia', altro_ota: 'Altro portale' };
@@ -534,9 +537,9 @@ export function renderEmail(template: EmailTemplate, ctx: EmailContext): Rendere
     case 'avviso_hotel': {
       // to the hotel itself, in Italian: everything needed to see the booking at a glance, room number included
       const n = extra?.notice;
-      const cancelled = n ? n.kind === 'cancellata' : b?.status === 'cancelled';
-      subject = n?.title ?? `${cancelled ? 'Prenotazione cancellata' : 'Nuova prenotazione'}${b ? ` · ${b.code}` : ''}`;
-      title = cancelled ? 'Prenotazione cancellata' : 'Nuova prenotazione';
+      const kind = n?.kind ?? (b?.status === 'cancelled' ? 'cancellata' : 'nuova');
+      title = NOTICE_HEADING[kind];
+      subject = n?.title ?? `${title}${b ? ` · ${b.code}` : ''}`;
       body = (n?.body ? p(esc(n.body).split('\n').join('<br>')) : '') + (b ? hotelRows(b, room, settings) : '');
       cta = { label: 'Apri nel pannello', href: `${appUrl()}${n?.href ?? (b ? `/admin/prenotazioni?id=${b.id}` : '/admin/prenotazioni')}` };
       break;

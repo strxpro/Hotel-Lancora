@@ -3,8 +3,10 @@ import { emailTransport } from './integrations';
 import { sendEmail } from './email/transport';
 import type { AppNotification, Booking, DB, EmailTemplate, NotificationType, OutboxEmail } from '@/lib/types';
 import { afterCommit, mutate, newId } from './db/store';
-import { renderEmail, type EmailContext } from './email/templates';
-import { escapeHtml, sendMessage, telegramConfigured } from './telegram/api';
+import { NOTICE_HEADING, renderEmail, type EmailContext } from './email/templates';
+import { escapeHtml, sendMessage, telegramConfigured, type InlineButton } from './telegram/api';
+import { diffDays, fmtDate } from '@/lib/dates';
+import { money } from '@/lib/utils';
 
 export function audit(db: DB, actor: string, action: string, entity: string, entityId: string | null, details: string): void {
   db.audit.unshift({ id: newId('a-'), at: new Date().toISOString(), actor, action, entity, entityId, details });
@@ -37,10 +39,56 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
   report_giornaliero: 'Report della giornata',
 };
 
+/** Notices about one booking of the hotel: the booking they speak of (from the link to it). */
+const BOOKING_NOTICE: NotificationType[] = ['nuova_prenotazione', 'prenotazione_cancellata', 'pagamento_non_completato'];
+function noticeBooking(db: DB, type: NotificationType, href: string | null): Booking | undefined {
+  if (!BOOKING_NOTICE.includes(type)) return undefined;
+  const id = href ? /[?&]id=([^&#]+)/.exec(href)?.[1] : undefined;
+  return id ? db.bookings.find((x) => x.id === id) : undefined;
+}
+
+const HOW: Record<NonNullable<Booking['paymentMethod']>, string> = { card: 'pagata con carta', cash: 'in contanti all’arrivo', transfer: 'con bonifico', ota: 'tramite il portale' };
+
+/**
+ * The Telegram message of a booking notice, one thing per line so it reads at a glance:
+ * guest, room, stay, money, contacts, requests; then what happened (cancelled, not paid…).
+ */
+export function bookingText(db: DB, type: NotificationType, title: string, body: string, b: Booking): string {
+  const room = db.rooms.find((r) => r.id === b.roomId);
+  const nights = diffDays(b.checkIn, b.checkOut);
+  const people = b.adults + b.children;
+  const lines = [
+    `${ICON[type]} <b>${escapeHtml(title)}</b>`,
+    '',
+    `👤 <b>${escapeHtml(guestName(b))}</b>`,
+    `🛏 ${room ? escapeHtml(`Camera ${room.number}${room.text.title && !room.text.title.includes(room.number) ? ` · ${room.text.title}` : ''}`) : 'Camera da assegnare'}`,
+    `📅 ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut, 'it', { day: 'numeric', month: 'short', year: 'numeric' })} · ${nights === 1 ? '1 notte' : `${nights} notti`} · ${people === 1 ? '1 ospite' : `${people} ospiti`}`,
+    `💶 ${money(b.total, 'it', 2)}${b.paymentMethod ? ` · ${HOW[b.paymentMethod]}` : ''}${b.amountPaid > 0 && b.amountPaid < b.total ? ` · versati ${money(b.amountPaid, 'it', 2)}` : ''}`,
+  ];
+  const contact = [b.guest.phone && `📞 ${escapeHtml(b.guest.phone)}`, b.guest.email && `✉️ ${escapeHtml(b.guest.email)}`].filter(Boolean).join('   ');
+  if (contact) lines.push(contact);
+  if (b.specialRequests?.trim()) lines.push(`📝 ${escapeHtml(b.specialRequests.trim().slice(0, 300))}`);
+  // what happened, in the words of the notice (the guest and the dates are already above)
+  const what = type === 'prenotazione_cancellata'
+    ? ['Le notti sono di nuovo libere.', /rimborso € [\d.,]+/.exec(body)?.[0]?.replace('rimborso', 'Rimborso')].filter(Boolean).join(' ')
+    : type === 'pagamento_non_completato'
+      ? `Il pagamento non è stato concluso: le date sono di nuovo libere.${/abbiamo scritto/i.test(body) ? ' Gli abbiamo scritto un’email con il link per finire la prenotazione.' : ''}`
+      : '';
+  if (what) lines.push('', `<i>${escapeHtml(what)}</i>`);
+  return lines.join('\n');
+}
+
+/** The button under a notice: straight to the right page of the panel (only with the site's real https address). */
+function panelButton(href: string | null): InlineButton[][] | undefined {
+  const base = (process.env.APP_URL || '').replace(/\/$/, '');
+  if (!href || !/^https:\/\//.test(base)) return undefined;
+  return [[{ text: href.startsWith('/admin/prenotazioni') ? '📋 Apri la prenotazione nel pannello' : '📋 Apri nel pannello', url: `${base}${href}` }]];
+}
+
 /**
  * Records an in-panel notification and, if enabled and configured, forwards it to every
- * linked Telegram chat after the database write succeeded. A new or cancelled booking also
- * goes by e-mail to the hotel's own address (see mailHotel).
+ * linked Telegram chat after the database write succeeded. A booking notice (new, cancelled,
+ * not paid) also goes by e-mail to the hotel's own address (see mailHotel).
  */
 export function notify(db: DB, type: NotificationType, title: string, body: string, href: string | null = null): AppNotification {
   // a type added after the settings were saved starts switched on
@@ -58,15 +106,17 @@ export function notify(db: DB, type: NotificationType, title: string, body: stri
   };
   db.notifications.unshift(n);
   if (db.notifications.length > 300) db.notifications.length = 300;
-  mailHotel(db, type, title, body, href);
+  const booking = noticeBooking(db, type, href);
+  mailHotel(db, type, title, body, href, booking);
   if (enabled && configured) {
     const chats = db.telegram.linkedChats.map((c) => c.chatId);
+    const text = booking && !booking.demo ? bookingText(db, type, title, body, booking) : `${ICON[type]} <b>${escapeHtml(title)}</b>\n${escapeHtml(body)}`;
+    const buttons = panelButton(href);
     afterCommit(async () => {
-      const text = `${ICON[type]} <b>${escapeHtml(title)}</b>\n${escapeHtml(body)}`;
       let status: AppNotification['telegram'] = 'inviato';
       for (const chat of chats) {
         try {
-          await sendMessage(chat, text);
+          await sendMessage(chat, text, buttons);
         } catch (e) {
           status = 'errore';
           console.error('[telegram]', (e as Error).message);
@@ -83,21 +133,19 @@ export function notify(db: DB, type: NotificationType, title: string, body: stri
 }
 
 /**
- * A new booking or a cancellation, by e-mail to the hotel's address (Impostazioni → Hotel), with
- * the booking's details. Only notices about one booking of the hotel (not the portals' calendars,
- * which write to the hotel themselves), never for simulations or demo data, once per booking and kind.
+ * A new booking, a cancellation or a booking left unpaid (the guest's contacts, to call them back),
+ * by e-mail to the hotel's address (Impostazioni → Hotel), with the booking's details. Only notices
+ * about one booking of the hotel (not the portals' calendars, which write to the hotel themselves),
+ * never for simulations or demo data, once per booking and kind.
  */
-function mailHotel(db: DB, type: NotificationType, title: string, body: string, href: string | null): void {
-  if (type !== 'nuova_prenotazione' && type !== 'prenotazione_cancellata') return;
+function mailHotel(db: DB, type: NotificationType, title: string, body: string, href: string | null, b: Booking | undefined): void {
   const to = db.settings.hotel.email?.trim();
-  const id = href ? /[?&]id=([^&#]+)/.exec(href)?.[1] : undefined;
-  const b = id ? db.bookings.find((x) => x.id === id) : undefined;
   if (!to || !b || b.simulated || b.demo) return;
-  const kind = type === 'nuova_prenotazione' ? 'nuova' : 'cancellata';
+  const kind = type === 'nuova_prenotazione' ? 'nuova' : type === 'prenotazione_cancellata' ? 'cancellata' : 'non_completata';
   // "nuova" is a booking made just now (new dates accepted on an old booking are not a new booking)
   if (kind === 'nuova' && Date.now() - Date.parse(b.createdAt) > 60 * 60_000) return;
   // a cancellation can be announced twice (the reason, then the cancellation itself): one e-mail is enough
-  const heading = kind === 'nuova' ? 'Nuova prenotazione' : 'Prenotazione cancellata';
+  const heading = NOTICE_HEADING[kind];
   if (db.outbox.some((e) => e.template === 'avviso_hotel' && e.bookingId === b.id && e.html.includes(`>${heading}</h1>`))) return;
   const room = db.rooms.find((r) => r.id === b.roomId) ?? null;
   queueEmail(db, 'avviso_hotel', to, { booking: b, room, extra: { notice: { kind, title, body, href } } });
