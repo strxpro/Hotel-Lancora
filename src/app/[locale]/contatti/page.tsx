@@ -9,6 +9,7 @@ import { ContactForm } from '@/components/site/contact-form';
 import { AreaMap } from '@/components/site/place-map';
 import { SplitHeading } from '@/components/site/motion-kit';
 import { CONTACT_T } from '@/lib/i18n/reviews-dict';
+import { WhatsAppContact } from '@/components/site/whatsapp-contact';
 
 type Props = { params: Promise<{ locale: string }> };
 
@@ -42,6 +43,8 @@ export default async function ContactPage({ params }: Props) {
                 </a>
               </span>
             </li>
+            {/* shown when the hotel has a WhatsApp number (Impostazioni → Hotel) */}
+            {h.whatsapp && h.whatsapp.replace(/\D/g, '').length >= 8 && <WhatsAppContact number={h.whatsapp} hotel={h.name} />}
             <li className="flex gap-4">
               <Mail className="mt-1 h-4 w-4 text-gold-2" />
               <span>
